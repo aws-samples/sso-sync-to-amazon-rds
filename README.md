@@ -42,7 +42,7 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
       "IAM_IDC_STORE_ID": null,
       "VPC_ID": "vpc-123bcde20",
       "RDS_DB_NAME": "test",
-      "RDS_DB_USER": "iam_admin",
+      "RDS_DB_USER": "sso_provisioner",
       "RDS_CLUSTER_ID": "database-1",
       "RDS_ACCOUNT_ID": null
     }
