@@ -3,14 +3,14 @@
 This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC Endpoint for AWS IAM Identity Center (successor to AWS Single Sign-On), the related Security Groups and permissions necessary to automatically provision database users to the Amazon Relational Database Service (Amazon RDS) cluster using AWS Cloud Development Kit (AWS CDK).
 
 
-When a new user is created in IAM Identity Center, EventBridge rule will trigger the Lambda function to check the user's group membership. If the user belongs to a group specified in a `IAM_IDC_GROUP_ID` variable, e.g. DBA group, the Function will create a new user in a specified Amazon RDS cluster. The user will then be able to login to the database using their SSO username and IAM credentials.
+When a new user is created in IAM Identity Center, EventBridge rule will trigger the Lambda function to check the user's group membership. If the user belongs to the group specified in a `IAM_IDC_GROUP_NAME` variable, e.g. DBA group, the Lambda function will create a new user in a specified Amazon RDS cluster. The user will then be able to login to the database using their SSO username and IAM credentials.
 
 ![Architecture diagram](architecture_diagram.png)
 
 ## Requirements
 
 1. Amazon RDS cluster must be configured with the IAM Authentication: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html
-2. Amazon RDS cluster must have a username for Lambda Function which allows to create users
+2. Amazon RDS cluster must have a username for the Lambda function. This user should have permissions to create users and grant permissions
 3. IAM Identity Center must be configured with a permission set that allows new users to connect to the RDS cluster using their username. Lambda Function will create user regardless of this permission, however the user will fail to authenticate unless it's present. You can find an example policy in `policies/iam-idc-allow-rds-connect.json`
 4. When using the example policy, IAM Identity Center must be configured with the following attributes for access control: `key: name`, `value: ${path:username}`. More on that here: https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
 
@@ -48,7 +48,7 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
     }
 ```
 
-`IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Store in an AWS Account.
+`IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` (from env) is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Store in an AWS Account.
 
 ## Example logging in
 
