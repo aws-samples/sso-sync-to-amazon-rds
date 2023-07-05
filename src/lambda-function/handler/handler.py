@@ -13,17 +13,11 @@ def handler(event, context):
 
     # Connection can be reused by subsequent Function invocations
     global db_conn
-
-    user_id = event['detail']['responseElements']['user']['userId']
-    identitystore_id = event['detail']['requestParameters']['identityStoreId']
-    logger.info("Received new event with user_id %s", user_id)
-
     rds_db_name = os.environ['RDS_DB_NAME']
 
     # One specific group will trigger RDS user creation
     group_id = os.environ['IDENTITYSTORE_GROUP_ID']
-
-    user_name = get_user_info(user_id, group_id, identitystore_id)
+    user_name = get_user_info(event['detail'], group_id)
 
     # User does not exist or not in the specified group ID
     if user_name is None:
@@ -39,7 +33,7 @@ def handler(event, context):
     if db_conn is None:
         raise Exception("Failed to connect to the DB")
 
-    create_user_q = f"CREATE USER '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
+    create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
     grant_q = f"GRANT INSERT, SELECT ON {rds_db_name}.* TO '{user_name}'@'%';"
 
     cursor = db_conn.cursor()
@@ -50,12 +44,36 @@ def handler(event, context):
     logger.info("Created RDS user %s", user_name)
     return {"status": "Success"}
 
-def get_user_info(user_id, group_id, identitystore_id):
+def get_user_info(event_details, group_id):
     """
     Gets user details from IAM Identity Center using user_id
     Returns user_name if user exists and belongs to a certain group
     Returns None otherwise
     """
+
+    event_type = event_details['eventName']
+    skip_membership_check = False
+    group_matches = False
+
+    # Adding user to a group
+    if event_type == 'AddMemberToGroup':
+        user_id = event_details['requestParameters']['member']['memberId']
+        _group_id = event_details['requestParameters']['groupId']
+        event_name = "add user to group"
+        skip_membership_check = True
+        group_matches = _group_id == group_id
+    # Creating a new user (group is none in this case)
+    else:
+        user_id = event_details['responseElements']['user']['userId']
+        event_name = "create user"
+
+    logger.info("Received new %s event with user_id %s", event_name, user_id)
+
+    if skip_membership_check and not group_matches:
+        logger.warning("User is not part of a requested group id %s", group_id)
+        return None
+
+    identitystore_id = event_details['requestParameters']['identityStoreId']
 
     config = Config(connect_timeout=3, retries={'max_attempts': 2})
     client = boto3.client('identitystore', config=config)
@@ -69,6 +87,9 @@ def get_user_info(user_id, group_id, identitystore_id):
         return None
 
     user_name = user_data.get('UserName', None)
+
+    if skip_membership_check:
+        return user_name
 
     group_membership = client.is_member_in_groups(
         IdentityStoreId=identitystore_id,

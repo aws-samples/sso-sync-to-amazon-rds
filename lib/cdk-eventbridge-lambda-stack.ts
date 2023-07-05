@@ -150,12 +150,12 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Default bus rule to match new IAM Identity Center users events
     const newSSOUserRule = new Rule(this, 'NewSSOUserRule', {
-      description: 'Add RDS user when new IAM Identity Center user is created',
+      description: 'Add RDS user when new IAM Identity Center user is created or added to a group',
       eventPattern: {
         source: ["aws.sso-directory"],
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["CreateUser"]
+          "eventName": ["CreateUser", "AddMemberToGroup"]
         }
       },
       eventBus: defaultBus,
