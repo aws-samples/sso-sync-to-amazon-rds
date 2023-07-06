@@ -79,7 +79,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Lambda layer with boto3 and mysql client for python Function
     const coreLayer = new lambda.LayerVersion(this, 'coreLayer', {
-        code: lambda.Code.fromAsset(path.join(__dirname, '../src/lambda-function/layer')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function/layer')),
         compatibleRuntimes: [Runtime.PYTHON_3_10]
     });
 
@@ -104,7 +104,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
         RDS_DB_PORT: String(rdsDBPort),
         IDENTITYSTORE_GROUP_ID: groupID,
       },
-      code: lambda.Code.fromAsset(path.join(__dirname, '../src/lambda-function/handler'))
+      code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function/handler'))
     });
 
     // Policy that allows read access to IAM Identity Center Store
