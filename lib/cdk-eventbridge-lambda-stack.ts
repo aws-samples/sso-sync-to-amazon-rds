@@ -11,8 +11,12 @@ import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { ImportedRDSCluster } from './imported-rds-cluster';
 import { ImportedIamIdc, ImportedIamIdcGroup } from './imported-iam-idc';
 
+interface NewSSOUserProps extends cdk.StackProps {
+  onFailureDest: lambda.IDestination | undefined;
+}
+
 export class NewSSOUserToRDS extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: NewSSOUserProps) {
     super(scope, id, props);
 
     // Get environment to work with, variables are specified in cdk.json
@@ -97,6 +101,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
       allowPublicSubnet: true, // Not needed with private subnets
       securityGroups: [lambdaSG],
       layers: [coreLayer],
+      onFailure: props?.onFailureDest,
       environment: {
         RDS_DB_NAME: rdsDBName,
         RDS_DB_USER: rdsLambdaDBUser,

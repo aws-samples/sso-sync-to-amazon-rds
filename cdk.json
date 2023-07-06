@@ -49,7 +49,8 @@
       "RDS_DB_NAME": "test",
       "RDS_DB_USER": "sso_provisioner",
       "RDS_CLUSTER_ID": "database-1",
-      "RDS_ACCOUNT_ID": null
+      "RDS_ACCOUNT_ID": null,
+      "NOTIFICATION_EMAIL": null
     }
   }
 }
