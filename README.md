@@ -44,11 +44,24 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
       "RDS_DB_NAME": "test",
       "RDS_DB_USER": "sso_provisioner",
       "RDS_CLUSTER_ID": "database-1",
-      "RDS_ACCOUNT_ID": null
+      "RDS_ACCOUNT_ID": null,
+      "NOTIFICATION_EMAIL": null
     }
 ```
 
 `IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` (from env) is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Store in an AWS Account.
+
+You can configure notifications using `NOTIFICATION_EMAIL` variable (`null` means notifications are disabled). When specified, AWS CDK provisions an additional Lambda function and an Amazon SNS topic with the subscription to a specified e-mail address in a separate AWS CDK stack. If the user provisioning fails, Lambda sends the failure details using Lambda destinations. For the e-mail notifications to work, you have to confirm subscription to the Amazon SNS topic.
+
+## Deploying and destroying stacks
+
+To deploy stacks run:
+
+`cdk deploy --all`
+
+To destroy stacks run:
+
+`cdk destroy --all`
 
 ## Example logging in
 
@@ -87,4 +100,3 @@ When a new DBA user is created in a SSO identity provider, it will be able to au
 * `cdk diff`        compare deployed stack with current state
 * `cdk synth`       emits the synthesized CloudFormation template
 * `cdk destroy`     deletes this stack from your AWS account
-
