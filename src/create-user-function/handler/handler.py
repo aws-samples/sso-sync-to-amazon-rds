@@ -7,8 +7,6 @@ from mysql import connector
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 db_conn = None
-# Subject for failure SNS notifications
-SUBJ_FAILURE = "SSO to RDS user sync failed"
 
 def handler(event, context):
     """Handler function, entry point for Lambda"""
@@ -33,8 +31,6 @@ def handler(event, context):
         db_conn = get_mysql_connection()
 
     if db_conn is None:
-        msg = "Failed to connect to the database. Check Lambda function logs for more details"
-        send_sns_message(msg, SUBJ_FAILURE)
         raise Exception("Failed to connect to the DB")
 
     create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
@@ -46,9 +42,6 @@ def handler(event, context):
         cursor.execute(create_user_q)
         cursor.execute(grant_q)
     except Exception as e:
-        msg = "Failed to execute SQL queries against the database. "\
-            "Check Lambda function logs for more details"
-        send_sns_message(msg, SUBJ_FAILURE)
         logger.error(e)
         raise Exception("Failed to execute SQL queries") from e
 
@@ -94,9 +87,6 @@ def get_user_info(event_details, group_id):
     )
 
     if not user_data:
-        msg = "Failed to get user details from IAM Identity Center Store. "\
-            "Check Lambda function logs for more details"
-        send_sns_message(msg, SUBJ_FAILURE)
         logger.error("Failed to get user data for user id %s", user_id)
         return None
 
@@ -120,9 +110,6 @@ def get_user_info(event_details, group_id):
     try:
         membership_ok = group_membership.get('Results', None)[0].get('MembershipExists', False)
     except IndexError:
-        msg = "Failed to get user membership from IAM Identity Center Store. "\
-        "Check Lambda function logs for more details"
-        send_sns_message(msg, SUBJ_FAILURE)
         logger.error("Failed to get group memebership for group id %s", group_id)
         membership_ok = False
 
@@ -149,9 +136,6 @@ def get_mysql_connection():
     db_name = os.environ.get('RDS_DB_NAME')
 
     if not all([db_ep, db_name, db_username]):
-        msg = "Database connection details are not valid. "\
-            "Please check the Lambda function environment"
-        send_sns_message(msg, SUBJ_FAILURE)
         logger.error("DB connection details not valid. Please check env variables")
         return None
 
@@ -160,9 +144,6 @@ def get_mysql_connection():
             DBHostname=db_ep, Port=db_port, DBUsername=db_username
         )
     except Exception as e:
-        msg = "Failed to retrieve database credentials. "\
-            "Please check the Lambda function execution role."
-        send_sns_message(msg, SUBJ_FAILURE)
         logger.error("Failed to retrieve DB credentials, please check the execution role")
         logger.error(e)
         return None
@@ -179,24 +160,3 @@ def get_mysql_connection():
         logger.error("Failed to connect to the DB")
         logger.error(e)
         return None
-
-def send_sns_message(msg, subj):
-    """
-    Sends e-mail notifications if operation is failed
-    SNS_TOPIC must be present in ENV
-    Otherwise assume no notifications configured
-    """
-
-    sns_arn = os.environ.get("SNS_TOPIC", None)
-    if sns_arn is None:
-        return
-
-    client = boto3.client('sns')
-    try:
-        client.publish(TopicArn=sns_arn, Message=msg, Subject=subj)
-    except Exception as e:
-        logger.error("Failed to send SNS notification")
-        logger.error(e)
-        return
-
-    logger.info("Sent SNS notification with subject: %s", subj)
