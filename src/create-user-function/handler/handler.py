@@ -2,57 +2,47 @@ import os
 import logging
 import boto3
 from botocore.client import Config
-from mysql import connector
+from lambda_utils import connection_manager
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-db_conn = None
+mysql_conn = None
+ddb_table = None
 
 def handler(event, context):
     """Handler function, entry point for Lambda"""
 
-    # Connection can be reused by subsequent Function invocations
-    global db_conn
-    rds_db_name = os.environ['RDS_DB_NAME']
+    global mysql_conn
+    global ddb_table
 
     # One specific group will trigger RDS user creation
     group_id = os.environ['IDENTITYSTORE_GROUP_ID']
-    user_name = get_user_info(event['detail'], group_id)
+    user_name, user_id = get_user_info(event['detail'], group_id)
 
     # User does not exist or not in the specified group ID
     if user_name is None:
         logger.info("Not adding user to RDS")
         return {"status": "Success"}
 
-    logger.info("Creating user %s in the DB", user_name)
+    # Init DynamoDB table if doesn't exist
+    if ddb_table is None:
+        ddb_table = connection_manager.get_ddb_table()
 
-    # Reuse connection if exists
-    if db_conn is None:
-        db_conn = get_mysql_connection()
+    # Init MySQL connection if doesn't exist
+    if mysql_conn is None:
+        mysql_conn = connection_manager.get_mysql_connection()
 
-    if db_conn is None:
-        raise Exception("Failed to connect to the DB")
+    # Create user in MySQL db and user mapping in DynamoDB
+    create_mysql_user(user_name, mysql_conn=mysql_conn)
+    create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=ddb_table)
 
-    create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
-    grant_q = f"GRANT INSERT, SELECT ON {rds_db_name}.* TO '{user_name}'@'%';"
-
-
-    try:
-        cursor = db_conn.cursor()
-        cursor.execute(create_user_q)
-        cursor.execute(grant_q)
-    except Exception as e:
-        logger.error(e)
-        raise Exception("Failed to execute SQL queries") from e
-
-    logger.info("Created RDS user %s", user_name)
     return {"status": "Success"}
 
 def get_user_info(event_details, group_id):
     """
     Gets user details from IAM Identity Center using user_id
-    Returns user_name if user exists and belongs to a certain group
-    Returns None otherwise
+    Returns username and user ID if user exists and belongs to a certain group
+    Returns None and user ID otherwise
     """
 
     event_type = event_details['eventName']
@@ -75,7 +65,7 @@ def get_user_info(event_details, group_id):
 
     if skip_membership_check and not group_matches:
         logger.warning("User is not part of a requested group id %s", group_id)
-        return None
+        return None, user_id
 
     identitystore_id = event_details['requestParameters']['identityStoreId']
 
@@ -88,12 +78,12 @@ def get_user_info(event_details, group_id):
 
     if not user_data:
         logger.error("Failed to get user data for user id %s", user_id)
-        return None
+        return None, user_id
 
     user_name = user_data.get('UserName', None)
 
     if skip_membership_check:
-        return user_name
+        return user_name, user_id
 
     group_membership = client.is_member_in_groups(
         IdentityStoreId=identitystore_id,
@@ -105,7 +95,7 @@ def get_user_info(event_details, group_id):
 
     if not group_membership:
         logger.error("Failed to get group memebership for group id %s", group_id)
-        return None
+        return None, user_id
 
     try:
         membership_ok = group_membership.get('Results', None)[0].get('MembershipExists', False)
@@ -115,48 +105,46 @@ def get_user_info(event_details, group_id):
 
     if not membership_ok:
         logger.warning("User is not part of a requested group id %s", group_id)
-        return None
+        return None, user_id
 
-    return user_name
+    return user_name, user_id
 
-def get_mysql_connection():
+def create_mysql_user(user_name, mysql_conn):
     """
-    Creates MySQL connection using IAM credentials
-    Returns mysql.connector if successful
-    Returns None if not successful
+    Creates MySQL user
+    Manages MySQL connections
+    Raises exception if not successful
     """
 
-    logger.info("Creating a MySQL DB connection")
-    config = Config(connect_timeout=3, retries={'max_attempts': 2})
-    client = boto3.client('rds', config=config)
-
-    db_ep = os.environ.get('RDS_DB_EP')
-    db_port = os.environ.get('RDS_DB_PORT', '3306')
-    db_username = os.environ.get('RDS_DB_USER')
+    logger.info("Creating user %s in the DB", user_name)
     db_name = os.environ.get('RDS_DB_NAME')
 
-    if not all([db_ep, db_name, db_username]):
-        logger.error("DB connection details not valid. Please check env variables")
-        return None
+    create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
+    grant_q = f"GRANT INSERT, SELECT ON {db_name}.* TO '{user_name}'@'%';"
 
     try:
-        db_pass = client.generate_db_auth_token(
-            DBHostname=db_ep, Port=db_port, DBUsername=db_username
-        )
+        cursor = mysql_conn.cursor()
+        cursor.execute(create_user_q)
+        cursor.execute(grant_q)
     except Exception as e:
-        logger.error("Failed to retrieve DB credentials, please check the execution role")
         logger.error(e)
-        return None
+        raise Exception("Failed to execute SQL queries") from e
+
+    logger.info("Created RDS user %s", user_name)
+
+def create_user_mapping(user_id, user_name, ddb_table):
+    """
+    Creates user ID to username mapping in DynamoDB
+    Manages DDB connections
+    Raises exception if not successful
+    """
+
+    logger.info("Creating user ID to username mapping in DDB for user %s", user_name)
 
     try:
-        conn = connector.connect(
-            host=db_ep,
-            user=db_username,
-            database=db_name,
-            password=db_pass,
-        )
-        return conn
+        item = {'userID': user_id, 'username': user_name}
+        ddb_table.put_item(Item=item)
     except Exception as e:
-        logger.error("Failed to connect to the DB")
-        logger.error(e)
-        return None
+        raise Exception("Failed to save user mapping to DDB") from e
+
+    logger.info("Successfully created user ID to username mapping")

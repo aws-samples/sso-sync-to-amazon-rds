@@ -3,7 +3,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as events_targets from 'aws-cdk-lib/aws-events-targets';
-import { Vpc, SecurityGroup, InterfaceVpcEndpoint, InterfaceVpcEndpointService, Port } from 'aws-cdk-lib/aws-ec2';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import { Vpc, SecurityGroup, InterfaceVpcEndpoint, InterfaceVpcEndpointService, Port, GatewayVpcEndpoint, GatewayVpcEndpointAwsService } from 'aws-cdk-lib/aws-ec2';
 import { Construct } from 'constructs';
 import { CfnOutput, Duration } from 'aws-cdk-lib';
 import { EventBus, Rule } from 'aws-cdk-lib/aws-events';
@@ -44,7 +45,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     // Existing Group ID to check against when adding new user to RDS (ex.: DBA group)
     const groupID = new ImportedIamIdcGroup(this, 'iamIdcGroupId', {
       TargetRegion: region, 
-      TargetIDC: identityStoreID, 
+      TargetIDC: identityStoreID,
       GroupName: groupName
     }).groupID;
 
@@ -75,19 +76,28 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const lambdaSG = new SecurityGroup(this, "lambdaSG", {
       vpc: lambdaVPC,
       allowAllOutbound: true,
-      description: "Create RDS User Lambda Function SG",
+      description: "Create/Delete RDS User Lambda Function SG",
     });
 
     // Allow MySQL 3306 from Lambda
     dbSG.connections.allowFrom(lambdaSG, Port.tcp(rdsDBPort), 'Allow MySQL from Lambda');
 
+    /* DynamoDB table to store user ID to user name mappings
+       This table is needed because the IAM Identity Center events don't contain user details
+       And when users are deleted, there's no way to query for details
+    */
+    const rdsUserTable = new dynamodb.Table(this, 'ssoUserTable', {
+      partitionKey: {name: 'userID', type: dynamodb.AttributeType.STRING},
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
+    });
+
     // Lambda layer with boto3 and mysql client for python Function
     const coreLayer = new lambda.LayerVersion(this, 'coreLayer', {
-        code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function/layer')),
+        code: lambda.Code.fromAsset(path.join(__dirname, '../src/layer')),
         compatibleRuntimes: [Runtime.PYTHON_3_10]
     });
 
-    /* Lambda Function triggered by a IAM IdC user creation
+    /* Lambda function triggered by a IAM IdC user creation
        Creates a new RDS user
        If a new SSO user is in a specific group
        Username in RDS equals to SSO username
@@ -107,10 +117,46 @@ export class NewSSOUserToRDS extends cdk.Stack {
         RDS_DB_USER: rdsLambdaDBUser,
         RDS_DB_EP: rdsClusterEPAddr,
         RDS_DB_PORT: String(rdsDBPort),
+        DDB_TABLE: rdsUserTable.tableName,
         IDENTITYSTORE_GROUP_ID: groupID,
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function/handler'))
     });
+
+    /* Lambda function triggered by a IAM IdC user deletion
+       Deletes a user from RDS
+       If a new SSO user was in a specific group
+       Username in RDS equals to SSO username
+    */
+    const deleteRDSUserFunction: lambda.Function = new lambda.Function(this, 'deleteRDSUserFunction', {
+        memorySize: 128,
+        timeout: Duration.seconds(10),
+        runtime: Runtime.PYTHON_3_10,
+        handler: 'handler.handler',
+        vpc: lambdaVPC,
+        allowPublicSubnet: true, // Not needed with private subnets
+        securityGroups: [lambdaSG],
+        layers: [coreLayer],
+        onFailure: props?.onFailureDest,
+        environment: {
+          RDS_DB_NAME: rdsDBName,
+          RDS_DB_USER: rdsLambdaDBUser,
+          RDS_DB_EP: rdsClusterEPAddr,
+          RDS_DB_PORT: String(rdsDBPort),
+          DDB_TABLE: rdsUserTable.tableName,
+          IDENTITYSTORE_GROUP_ID: groupID,
+        },
+        code: lambda.Code.fromAsset(path.join(__dirname, '../src/delete-user-function/handler'))
+      });
+
+    // Grant Lambda functions RW access to DDB
+    const actions = [
+      'dynamodb:PutItem',
+      'dynamodb:GetItem',
+      'dynamodb:DeleteItem'
+    ];
+    rdsUserTable.grant(createRDSUserFunction, ...actions);
+    rdsUserTable.grant(deleteRDSUserFunction, ...actions);
 
     // Policy that allows read access to IAM Identity Center Store
     const lambdaToIAMIdCAccessPolicy = new iam.PolicyStatement({
@@ -126,7 +172,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
       ] 
     });
 
-    /* Policy for lambda to connect to the DB
+    /* Policy for Lambda to connect to the DB
        RDS must have preconfigured IAM Authentication and user
        RDS user must have at least CREATE USER permissions
     */
@@ -139,22 +185,24 @@ export class NewSSOUserToRDS extends cdk.Stack {
       ]
     });
 
-    // Grant lambda function read access to IAM Identity Center Store
+    // Grant Lambda function read access to IAM Identity Center Store
     createRDSUserFunction.role?.attachInlinePolicy(
       new iam.Policy(this, 'lambda-to-iam-identitycenter-policy', {
         statements: [lambdaToIAMIdCAccessPolicy]
       })
     );
 
-    // Grant lambda function access to RDS DB
-    createRDSUserFunction.role?.attachInlinePolicy(
-      new iam.Policy(this, 'lambda-to-rds-db-policy', {
-        statements: [lambdaToRDSConnectPolicy]
-      })
-    );
+    // RDS Connect policy
+    const rdsConnectIamPolicy = new iam.Policy(this, 'lambda-to-rds-db-policy', {
+      statements: [lambdaToRDSConnectPolicy]
+    });
+
+    // Grant both Lambda functions access to RDS DB
+    createRDSUserFunction.role?.attachInlinePolicy(rdsConnectIamPolicy);
+    deleteRDSUserFunction.role?.attachInlinePolicy(rdsConnectIamPolicy);
 
     // Default bus rule to match new IAM Identity Center users events
-    const newSSOUserRule = new Rule(this, 'NewSSOUserRule', {
+    const createSSOUserRule = new Rule(this, 'CreateSSOUserRule', {
       description: 'Add RDS user when new IAM Identity Center user is created or added to a group',
       eventPattern: {
         source: ["aws.sso-directory"],
@@ -166,15 +214,35 @@ export class NewSSOUserToRDS extends cdk.Stack {
       eventBus: defaultBus,
     });
 
-    // Add Lambda Function as a target to the EventBridge Rule
-    newSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
+    // Default bus rule to match delete IAM Identity Center user events
+    const deleteSSOUserRule = new Rule(this, 'DeleteSSOUserRule', {
+      description: 'Deletes RDS user when user is deleted from IAM Identity Center a group',
+      eventPattern: {
+        source: ["aws.sso-directory"],
+        detail: {
+          "eventSource": ["sso-directory.amazonaws.com"],
+          "eventName": ["DeleteUser", "RemoveMemberFromGroup"]
+        }
+      },
+      eventBus: defaultBus,
+    });
 
-    // New VPC Endpoint for Lambda to reach IAM Identity Center Store
+    // Add Lambda Functions as targets to the respective EventBridge Rules
+    createSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
+    deleteSSOUserRule.addTarget(new events_targets.LambdaFunction(deleteRDSUserFunction));
+
+    // New VPC interface endpoint for Lambda functions to reach IAM Identity Center Store
     const vpeIDC = new InterfaceVpcEndpoint(this, 'VpcEpIDC', {
       vpc: lambdaVPC,
       service: new InterfaceVpcEndpointService(`com.amazonaws.${region}.identitystore`),
       privateDnsEnabled: true,
       open: false
+    });
+
+    // New VPC gateway endpoint for Lambda functions to reach DynamoDB
+    const vpeDDB = new GatewayVpcEndpoint(this, 'VpcEpDDB', {
+      vpc: lambdaVPC,
+      service: GatewayVpcEndpointAwsService.DYNAMODB
     });
 
     // Allow VPC Endpoint from Lambda function
