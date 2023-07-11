@@ -202,13 +202,16 @@ export class NewSSOUserToRDS extends cdk.Stack {
     deleteRDSUserFunction.role?.attachInlinePolicy(rdsConnectIamPolicy);
 
     // Default bus rule to match new IAM Identity Center users events
-    const createSSOUserRule = new Rule(this, 'CreateSSOUserRule', {
-      description: 'Add RDS user when new IAM Identity Center user is created or added to a group',
+    const createSSOUserRule = new Rule(this, 'AddUserToGroupRule', {
+      description: 'Add RDS user when an IAM Identity Center user is added to a group',
       eventPattern: {
         source: ["aws.sso-directory"],
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["CreateUser", "AddMemberToGroup"]
+          "eventName": ["AddMemberToGroup"],
+          "requestParameters": {
+            "groupId": [groupID] // Only matches a specific set of groups
+          }
         }
       },
       eventBus: defaultBus,
@@ -216,20 +219,38 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Default bus rule to match delete IAM Identity Center user events
     const deleteSSOUserRule = new Rule(this, 'DeleteSSOUserRule', {
-      description: 'Deletes RDS user when user is deleted from IAM Identity Center a group',
+      description: 'Deletes RDS user when user is deleted from IAM Identity Center',
       eventPattern: {
         source: ["aws.sso-directory"],
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["DeleteUser", "RemoveMemberFromGroup"]
+          "eventName": ["DeleteUser"]
+        }
+      },
+      eventBus: defaultBus,
+    });
+
+    // Default bus rule to match remove IAM Identity Center user from group events
+    const removeSSOUserFromGroupoRule = new Rule(this, 'RemoveUserFromGroupRule', {
+      description: 'Deletes RDS user when user is deleted from an IAM Identity Center group',
+      eventPattern: {
+        source: ["aws.sso-directory"],
+        detail: {
+          "eventSource": ["sso-directory.amazonaws.com"],
+          "eventName": ["RemoveMemberFromGroup"],
+          "requestParameters": {
+            "groupId": [groupID] // Only matches a specific set of groups
+          }
         }
       },
       eventBus: defaultBus,
     });
 
     // Add Lambda Functions as targets to the respective EventBridge Rules
+    const deleteFunctionTarget = new events_targets.LambdaFunction(deleteRDSUserFunction);
     createSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
-    deleteSSOUserRule.addTarget(new events_targets.LambdaFunction(deleteRDSUserFunction));
+    deleteSSOUserRule.addTarget(deleteFunctionTarget);
+    removeSSOUserFromGroupoRule.addTarget(deleteFunctionTarget);
 
     // New VPC interface endpoint for Lambda functions to reach IAM Identity Center Store
     const vpeIDC = new InterfaceVpcEndpoint(this, 'VpcEpIDC', {
