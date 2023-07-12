@@ -3,7 +3,7 @@
 This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC Endpoint for AWS IAM Identity Center (successor to AWS Single Sign-On), the related Security Groups and permissions necessary to automatically provision database users to the Amazon Relational Database Service (Amazon RDS) cluster using AWS Cloud Development Kit (AWS CDK).
 
 
-When a new user is created in IAM Identity Center, EventBridge rule will trigger the Lambda function to check the user's group membership. If the user belongs to the group specified in a `IAM_IDC_GROUP_NAME` variable, e.g. DBA group, the Lambda function will create a new user in a specified Amazon RDS cluster. The user will then be able to login to the database using their SSO username and IAM credentials.
+When a new user is created in IAM Identity Center and the user belongs to the group specified in a `IAM_IDC_GROUP_NAME` variable, EventBridge rule will trigger the Lambda function. The Lambda function will create a new user in a specified Amazon RDS cluster. The user will then be able to login to the database using their SSO username and IAM credentials. Adding a user to the configured group will trigger the Lambda function as well.
 
 ![Architecture diagram](architecture_diagram.png)
 
