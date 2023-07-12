@@ -36,7 +36,6 @@ def handler(event, context):
     create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
     grant_q = f"GRANT INSERT, SELECT ON {rds_db_name}.* TO '{user_name}'@'%';"
 
-
     try:
         cursor = db_conn.cursor()
         cursor.execute(create_user_q)
@@ -55,25 +54,14 @@ def get_user_info(event_details, group_id):
     Returns None otherwise
     """
 
-    event_type = event_details['eventName']
-    skip_membership_check = False
-    group_matches = False
+    # Always adding user to a group
+    user_id = event_details['requestParameters']['member']['memberId']
+    _group_id = event_details['requestParameters']['groupId']
+    group_matches = _group_id == group_id
 
-    # Adding user to a group
-    if event_type == 'AddMemberToGroup':
-        user_id = event_details['requestParameters']['member']['memberId']
-        _group_id = event_details['requestParameters']['groupId']
-        event_name = "add user to group"
-        skip_membership_check = True
-        group_matches = _group_id == group_id
-    # Creating a new user (group is none in this case)
-    else:
-        user_id = event_details['responseElements']['user']['userId']
-        event_name = "create user"
+    logger.info("Received new add user to group event with user_id %s", user_id)
 
-    logger.info("Received new %s event with user_id %s", event_name, user_id)
-
-    if skip_membership_check and not group_matches:
+    if not group_matches:
         logger.warning("User is not part of a requested group id %s", group_id)
         return None
 
@@ -91,31 +79,6 @@ def get_user_info(event_details, group_id):
         return None
 
     user_name = user_data.get('UserName', None)
-
-    if skip_membership_check:
-        return user_name
-
-    group_membership = client.is_member_in_groups(
-        IdentityStoreId=identitystore_id,
-        MemberId = {
-            'UserId': user_id
-        },
-        GroupIds = [group_id]
-    )
-
-    if not group_membership:
-        logger.error("Failed to get group memebership for group id %s", group_id)
-        return None
-
-    try:
-        membership_ok = group_membership.get('Results', None)[0].get('MembershipExists', False)
-    except IndexError:
-        logger.error("Failed to get group memebership for group id %s", group_id)
-        membership_ok = False
-
-    if not membership_ok:
-        logger.warning("User is not part of a requested group id %s", group_id)
-        return None
 
     return user_name
 

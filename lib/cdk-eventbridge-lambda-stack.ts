@@ -154,20 +154,23 @@ export class NewSSOUserToRDS extends cdk.Stack {
     );
 
     // Default bus rule to match new IAM Identity Center users events
-    const newSSOUserRule = new Rule(this, 'NewSSOUserRule', {
-      description: 'Add RDS user when new IAM Identity Center user is created or added to a group',
+    const createSSOUserRule = new Rule(this, 'AddUserToGroupRule', {
+      description: 'Add RDS user when an IAM Identity Center user is added to a group',
       eventPattern: {
         source: ["aws.sso-directory"],
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["CreateUser", "AddMemberToGroup"]
+          "eventName": ["AddMemberToGroup"],
+          "requestParameters": {
+            "groupId": [groupID] // Only matches a specific set of groups
+          }
         }
       },
       eventBus: defaultBus,
     });
 
     // Add Lambda Function as a target to the EventBridge Rule
-    newSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
+    createSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
 
     // New VPC Endpoint for Lambda to reach IAM Identity Center Store
     const vpeIDC = new InterfaceVpcEndpoint(this, 'VpcEpIDC', {
