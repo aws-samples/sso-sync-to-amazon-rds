@@ -6,14 +6,14 @@ from lambda_utils import connection_manager
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-mysql_conn = None
-ddb_table = None
+MYSQL_CONN = None
+DDB_TABLE = None
 
 def handler(event, context):
     """Handler function, entry point for Lambda"""
 
-    global mysql_conn
-    global ddb_table
+    global MYSQL_CONN
+    global DDB_TABLE
 
     # One specific group will trigger RDS user creation
     group_id = os.environ['IDENTITYSTORE_GROUP_ID']
@@ -25,16 +25,16 @@ def handler(event, context):
         return {"status": "Success"}
 
     # Init DynamoDB table if doesn't exist
-    if ddb_table is None:
-        ddb_table = connection_manager.get_ddb_table()
+    if DDB_TABLE is None:
+        DDB_TABLE = connection_manager.get_ddb_table()
 
     # Init MySQL connection if doesn't exist
-    if mysql_conn is None:
-        mysql_conn = connection_manager.get_mysql_connection()
+    if MYSQL_CONN is None:
+        MYSQL_CONN = connection_manager.get_mysql_connection()
 
     # Create user in MySQL db and user mapping in DynamoDB
-    create_mysql_user(user_name, mysql_conn=mysql_conn)
-    create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=ddb_table)
+    create_mysql_user(user_name, mysql_conn=MYSQL_CONN)
+    create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=DDB_TABLE)
 
     return {"status": "Success"}
 
@@ -92,9 +92,9 @@ def create_mysql_user(user_name, mysql_conn):
         cursor = mysql_conn.cursor()
         cursor.execute(create_user_q)
         cursor.execute(grant_q)
-    except Exception as e:
-        logger.error(e)
-        raise Exception("Failed to execute SQL queries") from e
+    except Exception as err:
+        logger.error(err)
+        raise Exception("Failed to execute SQL queries") from err
 
     logger.info("Created RDS user %s", user_name)
 
@@ -110,7 +110,7 @@ def create_user_mapping(user_id, user_name, ddb_table):
     try:
         item = {'userID': user_id, 'username': user_name}
         ddb_table.put_item(Item=item)
-    except Exception as e:
-        raise Exception("Failed to save user mapping to DDB") from e
+    except Exception as err:
+        raise Exception("Failed to save user mapping to DDB") from err
 
     logger.info("Successfully created user ID to username mapping")

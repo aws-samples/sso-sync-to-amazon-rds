@@ -4,14 +4,14 @@ from lambda_utils import connection_manager
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-mysql_conn = None
-ddb_table = None
+MYSQL_CONN = None
+DDB_TABLE = None
 
 def handler(event, context):
     """Handler function, entry point for Lambda"""
 
-    global mysql_conn
-    global ddb_table
+    global MYSQL_CONN
+    global DDB_TABLE
 
     # One specific group will trigger RDS user creation
     user_id = get_user_id(event['detail'])
@@ -22,11 +22,11 @@ def handler(event, context):
         return {"status": "Success"}
 
     # Inint DynamoDB table if doesn't exist
-    if ddb_table is None:
-        ddb_table = connection_manager.get_ddb_table()
+    if DDB_TABLE is None:
+        DDB_TABLE = connection_manager.get_ddb_table()
 
     # Get username from DynamoDB
-    user_name = get_user_name(user_id, ddb_table)
+    user_name = get_user_name(user_id, DDB_TABLE)
 
     # Return if username mapping not in DDB
     if not user_name:
@@ -34,12 +34,12 @@ def handler(event, context):
         return {"status": "Success"}
 
     # Init MySQL connection if doesn't exist
-    if mysql_conn is None:
-        mysql_conn = connection_manager.get_mysql_connection()
+    if MYSQL_CONN is None:
+        MYSQL_CONN = connection_manager.get_mysql_connection()
 
     # Delete user from MySQL and DDB
-    delete_mysql_user(user_name, mysql_conn)
-    delete_user_mapping(user_id, ddb_table)
+    delete_mysql_user(user_name, MYSQL_CONN)
+    delete_user_mapping(user_id, DDB_TABLE)
 
     return {"status": "Success"}
 
@@ -102,11 +102,11 @@ def get_user_name(user_id, ddb_table):
         data = resp['Item']
         logger.info(data)
         user_name = data['username']
-    except KeyError as e:
+    except KeyError:
         logger.warning("User ID %s not found in DDB", user_id)
         return None
-    except Exception as e:
-        raise Exception("Failed to get user mapping from DDB") from e
+    except Exception as err:
+        raise Exception("Failed to get user mapping from DDB") from err
 
     logger.info("Found username %s", user_name)
     return user_name
@@ -123,9 +123,9 @@ def delete_mysql_user(user_name, mysql_conn):
     try:
         cursor = mysql_conn.cursor()
         cursor.execute(drop_user_q)
-    except Exception as e:
-        logger.error(e)
-        raise Exception("Failed to execute SQL queries") from e
+    except Exception as err:
+        logger.error(err)
+        raise Exception("Failed to execute SQL queries") from err
 
     logger.info("Deleted RDS user %s", user_name)
 
@@ -143,7 +143,7 @@ def delete_user_mapping(user_id, ddb_table):
                 'userID': user_id
             }
         )
-    except Exception as e:
-        raise Exception("Failed to delete user mapping from DDB") from e
+    except Exception as err:
+        raise Exception("Failed to delete user mapping from DDB") from err
 
     logger.info("Deleted user mapping from DynamoDB")

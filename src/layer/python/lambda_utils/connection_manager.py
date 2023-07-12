@@ -30,8 +30,8 @@ def get_mysql_connection():
         db_pass = client.generate_db_auth_token(
             DBHostname=db_ep, Port=db_port, DBUsername=db_username
         )
-    except Exception as e:
-        raise Exception("Failed to retrieve DB credentials, please check the execution role") from e
+    except Exception as err:
+        raise Exception("Failed to retrieve DB details, please check the execution role") from err
 
     try:
         mysql_conn = connector.connect(
@@ -40,9 +40,9 @@ def get_mysql_connection():
             database=db_name,
             password=db_pass,
         )
-    except Exception as e:
-        logger.error(e)
-        raise Exception("Failed to execute SQL queries") from e
+    except Exception as err:
+        logger.error(err)
+        raise Exception("Failed to execute SQL queries") from err
 
     return mysql_conn
 
@@ -64,7 +64,7 @@ def get_ddb_table():
 
     try:
         ddb_table = ddb_res.Table(ddb_table_name)
-    except Exception as e:
-        raise Exception("Failed to get DynamoDB table") from e
+    except Exception as err:
+        raise Exception("Failed to get DynamoDB table") from err
 
     return ddb_table
