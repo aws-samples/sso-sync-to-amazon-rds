@@ -2,7 +2,7 @@
 
 This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC Endpoint for AWS IAM Identity Center (successor to AWS Single Sign-On), Amazon DynamoDB table, the related Security Groups and permissions necessary to automatically provision database users to the Amazon Relational Database Service (Amazon RDS) cluster using AWS Cloud Development Kit (AWS CDK).
 
-When a user is added to IAM Identity Center group or removed from the group, EventBridge rules will trigger a respective Lambda function to manage users in a MySQL database. The user is then be able to login to the database using their SSO username and IAM credentials.
+When a user is added to an IAM Identity Center group or removed from a group, EventBridge rules will trigger a respective Lambda function to manage users in a MySQL database. The user is then able to login to the database using their SSO username and IAM credentials.
 
 EventBridge rules trigger events for a specific group configured in the `IAM_IDC_GROUP_NAME` variable, e.g. DBA group. When user is deleted from IAM Identity Center, there's no group membership information present in the event, therefore the Lambda functions record user ID to username mappings in a DynamoDB table. The Lambda functions get username from this table on the `DeleteUser` event. There are 3 event names configured in the EventBridge rules:
 
@@ -56,7 +56,7 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
     }
 ```
 
-`IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` (from env) is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Store in an AWS Account.
+`IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` (from env) is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Identity Store in an AWS Account.
 
 You can configure notifications using `NOTIFICATION_EMAIL` variable (`null` means notifications are disabled). When specified, AWS CDK provisions an additional Lambda function and an Amazon SNS topic with the subscription to a specified e-mail address in a separate AWS CDK stack. If the user provisioning fails, Lambda sends the failure details using Lambda destinations. For the e-mail notifications to work, you have to confirm subscription to the Amazon SNS topic.
 
