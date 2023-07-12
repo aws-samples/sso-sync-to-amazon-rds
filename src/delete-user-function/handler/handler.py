@@ -27,9 +27,14 @@ def handler(event, context):
 
     # Get username from DynamoDB
     user_name = get_user_name(user_id, DDB_TABLE)
+    event_name = event['detail']['eventName']
+
+    # When removing member from a group, it's expected to be recorded in DDB
+    if event_name == 'RemoveMemberFromGroup' and user_name is None:
+        raise Exception("Removing member from a group, but username not found in DynamoDB")
 
     # Return if username mapping not in DDB
-    if not user_name:
+    if user_name is None:
         logger.warning("Username not found, nothing to delete")
         return {"status": "Success"}
 
