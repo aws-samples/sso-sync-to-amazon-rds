@@ -1,11 +1,18 @@
 # Welcome to SSO sync to Amazon RDS project
 
-This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC Endpoint for AWS IAM Identity Center (successor to AWS Single Sign-On), the related Security Groups and permissions necessary to automatically provision database users to the Amazon Relational Database Service (Amazon RDS) cluster using AWS Cloud Development Kit (AWS CDK).
+This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC Endpoint for AWS IAM Identity Center (successor to AWS Single Sign-On), Amazon DynamoDB table, the related Security Groups and permissions necessary to automatically provision database users to the Amazon Relational Database Service (Amazon RDS) cluster using AWS Cloud Development Kit (AWS CDK).
 
+When a user is added to IAM Identity Center group or removed from the group, EventBridge rules will trigger a respective Lambda function to manage users in a MySQL database. The user is then be able to login to the database using their SSO username and IAM credentials.
 
-When a new user is created in IAM Identity Center, EventBridge rule will trigger the Lambda function to check the user's group membership. If the user belongs to the group specified in a `IAM_IDC_GROUP_NAME` variable, e.g. DBA group, the Lambda function will create a new user in a specified Amazon RDS cluster. The user will then be able to login to the database using their SSO username and IAM credentials.
+EventBridge rules trigger events for a specific group configured in the `IAM_IDC_GROUP_NAME` variable, e.g. DBA group. When user is deleted from IAM Identity Center, there's no group membership information present in the event, therefore the Lambda functions record user ID to username mappings in a DynamoDB table. The Lambda functions get username from this table on the `DeleteUser` event. There are 3 event names configured in the EventBridge rules:
 
-![Architecture diagram](architecture_diagram.png)
+* `AddMemberToGroup`
+* `RemoveMemberFromGroup`
+* `DeleteUser`
+
+EventBridge rules do not match `CreateUser` events, since user creation is covered by the `AddMemberToGroup` event.
+
+![Architecture diagram](architecture_diagram_v2.png)
 
 ## Requirements
 
