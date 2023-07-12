@@ -15,7 +15,7 @@ def get_mysql_connection():
     """
 
     logger.info("Creating a MySQL DB connection")
-    config = Config(connect_timeout=3, retries={'max_attempts': 2})
+    config = Config(connect_timeout=3, retries={'max_attempts': 0})
     client = boto3.client('rds', config=config)
 
     db_ep = os.environ.get('RDS_DB_EP')
@@ -54,7 +54,7 @@ def get_ddb_table():
     """
 
     logger.info("Creating a DynamoDB connection")
-    config = Config(connect_timeout=3, retries={'max_attempts': 2})
+    config = Config(connect_timeout=3, read_timeout=3, retries={'max_attempts': 0})
     ddb_table_name = os.environ.get('DDB_TABLE')
 
     if not ddb_table_name:

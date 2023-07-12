@@ -1,7 +1,6 @@
 import os
 import logging
 import boto3
-from botocore.client import Config
 from lambda_utils import connection_manager
 
 logger = logging.getLogger()
@@ -59,9 +58,9 @@ def get_user_info(event_details, group_id):
         return None, user_id
 
     identitystore_id = event_details['requestParameters']['identityStoreId']
+    client = boto3.client('identitystore')
 
-    config = Config(connect_timeout=3, retries={'max_attempts': 2})
-    client = boto3.client('identitystore', config=config)
+    logger.info("Fetching user ID from Identity Store")
     user_data = client.describe_user(
         IdentityStoreId=identitystore_id,
         UserId=user_id
