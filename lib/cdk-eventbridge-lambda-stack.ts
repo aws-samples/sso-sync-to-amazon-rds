@@ -88,7 +88,9 @@ export class NewSSOUserToRDS extends cdk.Stack {
     */
     const rdsUserTable = new dynamodb.Table(this, 'ssoUserTable', {
       partitionKey: {name: 'userID', type: dynamodb.AttributeType.STRING},
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST
+      billingMode: dynamodb.BillingMode.PROVISIONED,
+      readCapacity: 2,
+      writeCapacity: 2
     });
 
     // Lambda layer with boto3 and mysql client for python Function
