@@ -20,9 +20,9 @@ def handler(event, context):
         logger.error("Failed to parse the message. Sending full event details")
         logger.error(event)
         error_message = f"Failed to parse event details. The full event is provided below:\n\n{event}"
-    except Exception as e:
+    except Exception as err:
         logger.error("Unexpected error when parsing the event")
-        logger.error(e)
+        logger.error(err)
         raise
 
     subj_failure = "SSO to RDS user sync failed"
@@ -56,9 +56,9 @@ def send_sns_message(msg, subj):
     client = boto3.client('sns')
     try:
         client.publish(TopicArn=sns_arn, Message=msg, Subject=subj)
-    except Exception as e:
+    except Exception as err:
         logger.error("Failed to send SNS notification")
-        logger.error(e)
+        logger.error(err)
         return
 
     logger.info("Sent SNS notification with subject: %s", subj)
