@@ -60,7 +60,12 @@ def handler(event, context):
 
     # Add user mapping if it doesn't exist
     if not managed_user:
-        create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=DDB_TABLE)
+        try:
+            create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=DDB_TABLE)
+        except Exception as err:
+            logger.info("Rolling back changes")
+            rollback(user_name, MYSQL_CONN)
+            raise Exception("Failed to create user") from err
 
     return {"status": "Success"}
 
@@ -101,6 +106,23 @@ def get_user_info(event_details, group_ids):
 
     return user_name, user_id
 
+def rollback(user_name, mysql_conn):
+    """
+    Deletes MySQL user
+    """
+
+    logger.info("Deleting user %s from the DB", user_name)
+    drop_user_q = f"DROP USER IF EXISTS '{user_name}';"
+
+    try:
+        cursor = mysql_conn.cursor()
+        cursor.execute(drop_user_q)
+    except Exception as err:
+        logger.error(err)
+        raise Exception("Failed to rollback") from err
+    finally:
+        cursor.close()
+
 def create_mysql_user(user_name, role, mysql_conn, safe_to_delete=False):
     """
     Creates MySQL user
@@ -114,9 +136,6 @@ def create_mysql_user(user_name, role, mysql_conn, safe_to_delete=False):
     create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
     grant_q = f"GRANT '{role}' TO '{user_name}'@'%';"
 
-    # Rollback user creation if SQL statements fail
-    drop_user_q = f"DROP USER IF EXISTS '{user_name}';"
-
     # Create user and assign role
     try:
         cursor = mysql_conn.cursor()
@@ -126,7 +145,7 @@ def create_mysql_user(user_name, role, mysql_conn, safe_to_delete=False):
         logger.error(err)
         # Rollback changes only when sure user didn't exist before
         if safe_to_delete:
-            cursor.execute(drop_user_q)
+            rollback(user_name, mysql_conn)
             logger.info("Changes rolled back")
         raise Exception("Failed to execute SQL queries") from err
     finally:
@@ -183,6 +202,8 @@ def check_if_managed_user(user_id, user_name, ddb_table):
     except Exception as err:
         logger.error("Failed to get user mapping from DDB")
         logger.error(err)
+        logger.warning("Assuming the user is not managed")
+
 
     return managed_user
 
@@ -199,6 +220,8 @@ def create_user_mapping(user_id, user_name, ddb_table):
         item = {'userID': user_id, 'username': user_name}
         ddb_table.put_item(Item=item)
     except Exception as err:
+        logger.error("Failed to save user mapping to DDB")
+        logger.error(err)
         raise Exception("Failed to save user mapping to DDB") from err
 
     logger.info("Successfully created user ID to username mapping")
