@@ -4,7 +4,16 @@ This project sets up AWS Lambda functions, Amazon EventBridge rule, Amazon VPC E
 
 When a user is added to an IAM Identity Center group or removed from a group, EventBridge rules will trigger a respective Lambda function to manage users in a MySQL database. The user is then able to login to the database using their SSO username and IAM credentials.
 
-EventBridge rules trigger events for a specific group configured in the `IAM_IDC_GROUP_NAME` variable, e.g. DBA group. When user is deleted from IAM Identity Center, there's no group membership information present in the event, therefore the Lambda functions record user ID to username mappings in a DynamoDB table. The Lambda functions get username from this table on the `DeleteUser` event. There are 3 event names configured in the EventBridge rules:
+![Architecture diagram](architecture_diagram_v2.png)
+
+EventBridge rules trigger events for a specific group configured in the `IAM_IDC_GROUP_NAMES` variable, e.g. DBA group. You can specify multiple comma-separated group names, for example `"IAM_IDC_GROUP_NAMES": "DBA,Analytics"`. Current implementation relies on the group name matching MySQL role name, which has to be created and assigned permissions manually. For example:
+
+```
+CREATE ROLE DBA;
+GRANT ALL ON test.* TO DBA;
+```
+
+When user is deleted from IAM Identity Center, there's no group membership information present in the event, therefore the Lambda functions record user ID to username mappings in a DynamoDB table. The Lambda functions get username from this table on the `DeleteUser` event. There are 3 event names configured in the EventBridge rules:
 
 * `AddMemberToGroup`
 * `RemoveMemberFromGroup`
@@ -12,7 +21,7 @@ EventBridge rules trigger events for a specific group configured in the `IAM_IDC
 
 EventBridge rules do not match `CreateUser` events, since user creation is covered by the `AddMemberToGroup` event.
 
-![Architecture diagram](architecture_diagram_v2.png)
+The solution doesn't delete or create users if a user with the same username already exists in the database, but is not managed by the solution (i.e. the user ID is not recorded in the DynamoDB table). Membersip in multiple groups is not supported for a single user: when deleting user from one group, it will be deleted from the database regardless of how many groups are assigned to this user.
 
 ## Requirements
 
@@ -45,13 +54,12 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
 
 ```
     "dev": {
-      "IAM_IDC_GROUP_NAME": "DBA",
-      "IAM_IDC_STORE_ID": null,
+      "IAM_IDC_GROUP_NAMES": "DBA",
       "VPC_ID": "vpc-123bcde20",
-      "RDS_DB_NAME": "test",
       "RDS_DB_USER": "sso_provisioner",
       "RDS_CLUSTER_ID": "database-1",
       "RDS_ACCOUNT_ID": null,
+      "IAM_IDC_STORE_ID": null,
       "NOTIFICATION_EMAIL": null
     }
 ```
@@ -59,6 +67,15 @@ The `cdk.json` file tells the CDK Toolkit how to execute your app. It is preconf
 `IAM_IDC_STORE_ID` and `RDS_ACCOUNT_ID` are optional. `CDK_DEFAULT_REGION` (from env) is used if not specified, and IAM Identity Store ID is derived dynamically, since there can only be one Identity Store in an AWS Account.
 
 You can configure notifications using `NOTIFICATION_EMAIL` variable (`null` means notifications are disabled). When specified, AWS CDK provisions an additional Lambda function and an Amazon SNS topic with the subscription to a specified e-mail address in a separate AWS CDK stack. If the user provisioning fails, Lambda sends the failure details using Lambda destinations. For the e-mail notifications to work, you have to confirm subscription to the Amazon SNS topic.
+
+## Configuring administrative user for Lambda function
+To succesfully assign MySQL roles, the user specified in the `RDS_DB_USER` variable must either be configured with the roles it needs to be able to assign and `WITH ADMIN OPTION`, or it has to be assigned a superuser role. For example:
+
+```
+CREATE USER sso_provisioner IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+GRANT 'rds_superuser_role' TO sso_provisioner;
+SET DEFAULT ROLE ALL TO sso_provisioner;
+```
 
 ## Deploying and destroying stacks
 
