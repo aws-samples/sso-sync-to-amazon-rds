@@ -27,11 +27,11 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const accountID = cdk.Stack.of(this).account;
     const region = cdk.Stack.of(this).region;
 
-    const groupName = context.IAM_IDC_GROUP_NAME;
+    // Specify comma separated list of groups or just a single group
+    const groupNames = context.IAM_IDC_GROUP_NAMES.split(",");
     let identityStoreID = context.IAM_IDC_STORE_ID;
     const vpcID = context.VPC_ID;
 
-    const rdsDBName = context.RDS_DB_NAME;
     const rdsDBPort = context.RDS_DB_PORT || 3306;
     const rdsClusterID = context.RDS_CLUSTER_ID;
     const rdsLambdaDBUser = context.RDS_DB_USER;
@@ -42,13 +42,24 @@ export class NewSSOUserToRDS extends cdk.Stack {
       identityStoreID = new ImportedIamIdc(this, 'importedIdc', { TargetRegion: region }).idcID;
     }
 
-    // Existing Group ID to check against when adding new user to RDS (ex.: DBA group)
-    const groupID = new ImportedIamIdcGroup(this, 'iamIdcGroupId', {
-      TargetRegion: region, 
-      TargetIDC: identityStoreID,
-      GroupName: groupName
-    }).groupID;
+    // Empty object for group membership data
+    let groups: { [groupID: string] : string } = {};
+    let groupIDs: string[] = [];
 
+    // Get data for each configured group name
+    for (let groupName of groupNames) {
+          // Existing Group ID to check against when adding new user to RDS (ex.: DBA group)
+          const groupID = new ImportedIamIdcGroup(this, 'iamIdcGroupId' + groupName, {
+            TargetRegion: region, 
+            TargetIDC: identityStoreID,
+            GroupName: groupName
+          }).groupID;
+
+          // Populate group objects
+          groups[groupID] = groupName;
+          groupIDs.push(groupID);
+    }
+    
     // Existing RDS Cluster to get info from
     const existingRdsCluster = new ImportedRDSCluster(this, 'existingRDS', {
       TargetRegion: region, 
@@ -115,12 +126,11 @@ export class NewSSOUserToRDS extends cdk.Stack {
       layers: [coreLayer],
       onFailure: props?.onFailureDest,
       environment: {
-        RDS_DB_NAME: rdsDBName,
         RDS_DB_USER: rdsLambdaDBUser,
         RDS_DB_EP: rdsClusterEPAddr,
         RDS_DB_PORT: String(rdsDBPort),
         DDB_TABLE: rdsUserTable.tableName,
-        IDENTITYSTORE_GROUP_ID: groupID,
+        IDENTITYSTORE_GROUP_IDS: JSON.stringify(groups),
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function/handler'))
     });
@@ -141,12 +151,11 @@ export class NewSSOUserToRDS extends cdk.Stack {
         layers: [coreLayer],
         onFailure: props?.onFailureDest,
         environment: {
-          RDS_DB_NAME: rdsDBName,
           RDS_DB_USER: rdsLambdaDBUser,
           RDS_DB_EP: rdsClusterEPAddr,
           RDS_DB_PORT: String(rdsDBPort),
           DDB_TABLE: rdsUserTable.tableName,
-          IDENTITYSTORE_GROUP_ID: groupID,
+          IDENTITYSTORE_GROUP_IDS: JSON.stringify(groups),
         },
         code: lambda.Code.fromAsset(path.join(__dirname, '../src/delete-user-function/handler'))
       });
@@ -169,7 +178,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
       resources: [
         'arn:aws:identitystore:::user/*',
         'arn:aws:identitystore:::membership/*',
-        `arn:aws:identitystore:::group/${groupID}`,
+        `arn:aws:identitystore:::group/*`,
         `arn:aws:identitystore::${accountID}:identitystore/${identityStoreID}`,
       ] 
     });
@@ -212,7 +221,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
           "eventSource": ["sso-directory.amazonaws.com"],
           "eventName": ["AddMemberToGroup"],
           "requestParameters": {
-            "groupId": [groupID] // Only matches a specific set of groups
+            "groupId": groupIDs // Only matches a specific set of groups
           }
         }
       },
@@ -241,7 +250,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
           "eventSource": ["sso-directory.amazonaws.com"],
           "eventName": ["RemoveMemberFromGroup"],
           "requestParameters": {
-            "groupId": [groupID] // Only matches a specific set of groups
+            "groupId": groupIDs // Only matches a specific set of groups
           }
         }
       },
@@ -274,7 +283,6 @@ export class NewSSOUserToRDS extends cdk.Stack {
     // Output Lambda SG and RDS SG changed by CDK
     new CfnOutput(this, 'lambdaSGOut', { value: lambdaSG.securityGroupId });
     new CfnOutput(this, 'rdsSGOut', {value: dbSG.securityGroupId});
-    new CfnOutput(this, 'groupID', {value: groupID});
     new CfnOutput(this, 'identityStoreID', {value: identityStoreID});
 
   }

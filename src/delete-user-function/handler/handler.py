@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 from lambda_utils import connection_manager
 
 logger = logging.getLogger()
@@ -59,10 +60,10 @@ def get_user_id(event_details):
     check_group = True
     group_matches = True
 
-    group_id = os.environ.get('IDENTITYSTORE_GROUP_ID')
+    group_ids = json.loads(os.environ.get('IDENTITYSTORE_GROUP_IDS'))
 
     # Can't check group membership if group ID is not specified
-    if group_id is None:
+    if group_ids is None:
         logger.warning("Group ID is not specified in env, skipping group checks")
         check_group = False
 
@@ -74,7 +75,7 @@ def get_user_id(event_details):
         # Check group membership when group ID is configured
         if check_group:
             _group_id = event_details['requestParameters']['groupId']
-            group_matches = _group_id == group_id
+            group_matches = _group_id in group_ids.keys()
     # Deleting user
     else:
         user_id = event_details['requestParameters']['userId']
@@ -131,6 +132,8 @@ def delete_mysql_user(user_name, mysql_conn):
     except Exception as err:
         logger.error(err)
         raise Exception("Failed to execute SQL queries") from err
+    finally:
+        cursor.close()
 
     logger.info("Deleted RDS user %s", user_name)
 

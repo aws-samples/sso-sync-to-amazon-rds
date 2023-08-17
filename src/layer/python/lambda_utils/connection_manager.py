@@ -21,9 +21,8 @@ def get_mysql_connection():
     db_ep = os.environ.get('RDS_DB_EP')
     db_port = os.environ.get('RDS_DB_PORT', '3306')
     db_username = os.environ.get('RDS_DB_USER')
-    db_name = os.environ.get('RDS_DB_NAME')
 
-    if not all([db_ep, db_name, db_username]):
+    if not all([db_ep, db_username]):
         raise Exception("DB connection details not valid. Please check env variables")
 
     try:
@@ -37,7 +36,6 @@ def get_mysql_connection():
         mysql_conn = connector.connect(
             host=db_ep,
             user=db_username,
-            database=db_name,
             password=db_pass,
         )
     except Exception as err:
