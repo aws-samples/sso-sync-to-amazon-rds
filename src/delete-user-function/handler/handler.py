@@ -2,6 +2,7 @@ import os
 import logging
 import json
 from lambda_utils import connection_manager
+from lambda_utils.sql_executor import MySQLExecutor as ME
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -43,8 +44,11 @@ def handler(event, context):
     if MYSQL_CONN is None:
         MYSQL_CONN = connection_manager.get_mysql_connection()
 
+    # Init MySQL executor
+    mysql_executor = ME(MYSQL_CONN)
+
     # Delete user from MySQL and DDB
-    delete_mysql_user(user_name, MYSQL_CONN)
+    delete_mysql_user(user_name, mysql_executor)
     delete_user_mapping(user_id, DDB_TABLE)
 
     return {"status": "Success"}
@@ -117,23 +121,15 @@ def get_user_name(user_id, ddb_table):
     logger.info("Found username %s", user_name)
     return user_name
 
-def delete_mysql_user(user_name, mysql_conn):
+def delete_mysql_user(user_name, mysql_executor):
     """
     Deletes user from MySQL database if exists
-    Raises exceptions on errors
     """
 
     logger.info("Deleting user %s from the DB", user_name)
     drop_user_q = f"DROP USER IF EXISTS '{user_name}';"
 
-    try:
-        cursor = mysql_conn.cursor()
-        cursor.execute(drop_user_q)
-    except Exception as err:
-        logger.error(err)
-        raise Exception("Failed to execute SQL queries") from err
-    finally:
-        cursor.close()
+    mysql_executor.write(drop_user_q, friendly_name="drop user")
 
     logger.info("Deleted RDS user %s", user_name)
 

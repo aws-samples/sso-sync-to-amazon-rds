@@ -3,6 +3,7 @@ import logging
 import json
 import boto3
 from lambda_utils import connection_manager
+from lambda_utils.sql_executor import MySQLExecutor as ME
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -34,11 +35,14 @@ def handler(event, context):
     if MYSQL_CONN is None:
         MYSQL_CONN = connection_manager.get_mysql_connection()
 
-    # Check if the user exists and managed
-    managed_user = False
-    user_exists = check_if_user_exists(user_name, MYSQL_CONN)
+    # Init MySQL executor
+    mysql_executor = ME(MYSQL_CONN)
 
-    # Check if managed only when exists
+    # Check if the user exists in the MySQL db
+    managed_user = False
+    user_exists = check_if_user_exists(user_name, mysql_executor)
+
+    # Check if managed (exists in DynamoDB) only when exists in the MySQL db
     if user_exists:
         managed_user = check_if_managed_user(user_id, user_name, DDB_TABLE)
 
@@ -54,18 +58,39 @@ def handler(event, context):
         logger.warning("User already exists in MySQL database")
         safe_to_delete = False
 
-    # Create user in MySQL db and user mapping in DynamoDB
-    create_mysql_user(user_name, role=role_name, mysql_conn=MYSQL_CONN,
-                      safe_to_delete=safe_to_delete)
+    # Create user in the MySQL db
+    try:
+        create_mysql_user(user_name, mysql_executor)
+    except Exception as err:
+        logger.error("Failed to create MySQL user")
+        logger.error(err)
+        raise Exception("Failed to create MySQL user") from err
 
-    # Add user mapping if it doesn't exist
+    # Grant role to the user
+    try:
+        grant_mysql_role(user_name, role_name, mysql_executor)
+    except Exception as err:
+        logger.error("Failed to grant MySQL role. Does the role %s exist in the DB?", role_name)
+        logger.error(err)
+        # Rollback if user didn't exist before
+        if safe_to_delete:
+            rollback(user_name, mysql_executor)
+            logger.info("Changes rolled back")
+        # Otherwise it's not safe to delete user
+        else:
+            logger.info("Not safe to rollback. Not deleting the user")
+        raise Exception("Failed to grant MySQL role") from err
+
+    # Add user mapping to DynamoDB if it doesn't exist
     if not managed_user:
         try:
             create_user_mapping(user_id=user_id, user_name=user_name, ddb_table=DDB_TABLE)
+        # Rollback on error
         except Exception as err:
             logger.info("Rolling back changes")
-            rollback(user_name, MYSQL_CONN)
-            raise Exception("Failed to create user") from err
+            rollback(user_name, mysql_executor)
+            logger.error(err)
+            raise Exception("Failed to create user in DynamoDB") from err
 
     return {"status": "Success"}
 
@@ -78,13 +103,15 @@ def get_user_info(event_details, group_ids):
 
     group_matches = False
 
-    # Always adding user to a group
+    # Always adding user to a group (even on user creation)
     user_id = event_details['requestParameters']['member']['memberId']
     _group_id = event_details['requestParameters']['groupId']
     group_matches = _group_id in group_ids.keys()
 
     logger.info("Received new add user to group event with user_id %s", user_id)
 
+    # The IAM Identity Center group is not configured for this function
+    # Normally shouldn't happen
     if not group_matches:
         logger.warning("User is not part of a requested group id %s", _group_id)
         return None, user_id
@@ -106,7 +133,7 @@ def get_user_info(event_details, group_ids):
 
     return user_name, user_id
 
-def rollback(user_name, mysql_conn):
+def rollback(user_name, mysql_executor):
     """
     Deletes MySQL user
     """
@@ -114,46 +141,36 @@ def rollback(user_name, mysql_conn):
     logger.info("Deleting user %s from the DB", user_name)
     drop_user_q = f"DROP USER IF EXISTS '{user_name}';"
 
-    try:
-        cursor = mysql_conn.cursor()
-        cursor.execute(drop_user_q)
-    except Exception as err:
-        logger.error(err)
-        raise Exception("Failed to rollback") from err
-    finally:
-        cursor.close()
+    mysql_executor.write(drop_user_q, friendly_name="drop user")
 
-def create_mysql_user(user_name, role, mysql_conn, safe_to_delete=False):
+    logging.info("Deleted user from the database")
+
+def grant_mysql_role(user_name, role, mysql_executor):
+    """
+    Grants role to the user
+    """
+
+    logger.info("Granting role %s to user %s", role, user_name)
+    grant_q = f"GRANT '{role}' TO '{user_name}'@'%';"
+
+    mysql_executor.write(grant_q, friendly_name="grant role")
+
+    logger.info("Successfully granted role to the user")
+
+def create_mysql_user(user_name, mysql_executor):
     """
     Creates MySQL user
-    Manages MySQL connections
-    Raises exception if not successful
+    Grants role to the user
     """
 
     logger.info("Creating user %s in the DB", user_name)
-
-    # Create user and grant role
     create_user_q = f"CREATE USER IF NOT EXISTS '{user_name}' IDENTIFIED WITH AWSAuthenticationPlugin as 'RDS';"
-    grant_q = f"GRANT '{role}' TO '{user_name}'@'%';"
 
-    # Create user and assign role
-    try:
-        cursor = mysql_conn.cursor()
-        cursor.execute(create_user_q)
-        cursor.execute(grant_q)
-    except Exception as err:
-        logger.error(err)
-        # Rollback changes only when sure user didn't exist before
-        if safe_to_delete:
-            rollback(user_name, mysql_conn)
-            logger.info("Changes rolled back")
-        raise Exception("Failed to execute SQL queries") from err
-    finally:
-        cursor.close()
+    mysql_executor.write(create_user_q, friendly_name="create user")
 
     logger.info("Created RDS user %s", user_name)
 
-def check_if_user_exists(user_name, mysql_conn):
+def check_if_user_exists(user_name, mysql_executor):
     """
     Checks if user exists in  the MySQL database
     """
@@ -161,21 +178,14 @@ def check_if_user_exists(user_name, mysql_conn):
     user_exists = False
     select_user_q = f"SELECT user FROM mysql.user WHERE user = '{user_name}';"
 
-    # Check if user already exists
     try:
-        cursor = mysql_conn.cursor()
-        cursor.execute(select_user_q)
-        cursor.fetchall()
-        row_count = cursor.rowcount
+        row_count = mysql_executor.count_rows(select_user_q, friendly_name="select user")
         if row_count >= 1:
             user_exists = True
-    except Exception as err:
-        logger.error(err)
+    except Exception:
         logger.warning("Couldn't determine wether the user already exists in the DB")
         logger.warning("Assuming user exists as a fail-safe")
         user_exists = True
-    finally:
-        cursor.close()
 
     return user_exists
 
@@ -203,7 +213,6 @@ def check_if_managed_user(user_id, user_name, ddb_table):
         logger.error("Failed to get user mapping from DDB")
         logger.error(err)
         logger.warning("Assuming the user is not managed")
-
 
     return managed_user
 
