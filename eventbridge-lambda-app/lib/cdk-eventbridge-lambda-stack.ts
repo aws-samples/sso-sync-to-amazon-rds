@@ -77,7 +77,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Lambda layer with boto3 and db clients for python Function
     const coreLayer = new PythonLayerVersion(this, "PL", {
-      entry: path.join(__dirname, '../src/layer'),
+      entry: path.join(__dirname, '../functions/layer'),
       compatibleRuntimes: [Runtime.PYTHON_3_12]
     });
 
@@ -103,7 +103,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
         DDB_TABLE: rdsUserTable.tableName,
         IDENTITYSTORE_GROUP_IDS: groups,
       },
-      code: lambda.Code.fromAsset(path.join(__dirname, '../src/create-user-function'))
+      code: lambda.Code.fromAsset(path.join(__dirname, '../functions/create-user-function'))
     });
 
     /* Lambda function triggered by a IAM IdC user deletion
@@ -129,7 +129,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
           DDB_TABLE: rdsUserTable.tableName,
           IDENTITYSTORE_GROUP_IDS: groups,
         },
-        code: lambda.Code.fromAsset(path.join(__dirname, '../src/delete-user-function'))
+        code: lambda.Code.fromAsset(path.join(__dirname, '../functions/delete-user-function'))
       });
 
     // Grant Lambda functions RW access to DDB
