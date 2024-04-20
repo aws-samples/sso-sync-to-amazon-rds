@@ -175,7 +175,7 @@ def check_if_user_exists(user_name, executor):
         if row_count >= 1:
             user_exists = True
     except Exception:
-        logger.warning("Couldn't determine wether the user already exists in the DB")
+        logger.warning("Couldn't determine whether the user already exists in the DB")
         logger.warning("Assuming user exists as a fail-safe")
         user_exists = True
 
@@ -184,7 +184,7 @@ def check_if_user_exists(user_name, executor):
 def check_if_managed_user(user_id, user_name, ddb_table):
     """
     Checks if user mapping already exists in DynamoDB
-    This allows to determine wether the user is managed by the solution or not
+    This allows to determine whether the user is managed by the solution or not
     """
 
     logger.info("Fetching user %s from DDB", user_name)

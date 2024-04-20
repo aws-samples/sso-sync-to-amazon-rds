@@ -24,12 +24,15 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const env = process.env.CDK_ENV || "dev";
     const context = this.node.tryGetContext(env);
 
+    // Lambda and EventBridge region and account
     const accountID = cdk.Stack.of(this).account;
     const region = cdk.Stack.of(this).region;
 
-    const rdsLambdaDBUser = context.RDS_DB_USER;
+    // RDS region and account. By default the same as above
     const rdsAccountID = context.RDS_ACCOUNT_ID || accountID;
+    const rdsRegion = context.RDS_REGION || region;
 
+    // Import values from stack
     const rdsClusterEPAddr = cdk.Fn.importValue('rdsClusterEPAddr');
     const dbSgID = cdk.Fn.importValue('dbSgID');
     const rdsEngine = cdk.Fn.importValue('rdsEngine');
@@ -40,6 +43,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     // Import values from parameter store
     const vpcID = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsVpcId");
     const rdsDBPort = +ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsDBPort");
+    const rdsLambdaDBUser = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsLambdaDBUser");
 
     // Existing RDS Security Group (first available is selected)
     const dbSG = SecurityGroup.fromSecurityGroupId(this, 'dbSG', dbSgID, {
@@ -100,6 +104,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
         RDS_DB_USER: rdsLambdaDBUser,
         RDS_DB_EP: rdsClusterEPAddr,
         RDS_DB_PORT: String(rdsDBPort),
+        RDS_DB_ENGINE: rdsEngine,
         DDB_TABLE: rdsUserTable.tableName,
         IDENTITYSTORE_GROUP_IDS: groups,
       },
@@ -164,7 +169,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
         'rds-db:connect'
       ],
       resources: [
-        `arn:aws:rds-db:${region}:${rdsAccountID}:dbuser:*/${rdsLambdaDBUser}`,
+        `arn:aws:rds-db:${rdsRegion}:${rdsAccountID}:dbuser:*/${rdsLambdaDBUser}`,
       ]
     });
 

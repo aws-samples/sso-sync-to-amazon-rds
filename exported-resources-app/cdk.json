@@ -65,8 +65,11 @@
     "@aws-cdk/aws-codepipeline:defaultPipelineTypeToV2": true,
     "@aws-cdk/aws-kms:reduceCrossAccountRegionPolicyScope": true,
     "dev": {
-      "RDS_CLUSTER_ID": "database-1",
-      "IAM_IDC_GROUP_NAMES": "DBA"
+      "RDS_CLUSTER_ID": "database-2",
+      "IAM_IDC_GROUP_NAMES": "DBA",
+      "RDS_DB_USER": "sso_provisioner",
+      "RDS_ACCOUNT_ID": null,
+      "RDS_REGION": null
     }
   } 
 }

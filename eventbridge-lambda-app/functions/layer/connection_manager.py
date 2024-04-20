@@ -38,20 +38,27 @@ def get_db_connection():
         )
     except Exception as err:
         raise Exception("Failed to retrieve DB details, please check the execution role") from err
-
-    if db_engine == 'mysql':
-        from mysql import connector
-    if db_engine == 'postgres':
-        import psycopg2 as connector
-
+    
     try:
-        db_conn = connector.connect(
-            host=db_ep,
-            user=db_username,
-            password=db_pass,
-            port=db_port,
-            auth_plugin='mysql_clear_password'
-        )
+        if db_engine == 'mysql':
+            from mysql import connector
+            db_conn = connector.connect(
+                host=db_ep,
+                user=db_username,
+                password=db_pass,
+                port=db_port,
+                auth_plugin='mysql_clear_password'
+            )
+        if db_engine == 'postgres':
+            import psycopg2
+            db_conn = psycopg2.connect(
+                host=db_ep,
+                port=db_port,
+                user=db_username,
+                password=db_pass,
+                dbname='postgres' # Connecting to the default database
+            )
+
     except Exception as err:
         logger.error(err)
         raise Exception("Failed to connect to the db") from err

@@ -14,12 +14,15 @@ export class OutputsStack extends cdk.Stack {
 
       const accountID = cdk.Stack.of(this).account;
       const region = cdk.Stack.of(this).region;
-      const rdsClusterID = context.RDS_CLUSTER_ID;
       const rdsAccountID = context.RDS_ACCOUNT_ID || accountID;
+      const rdsRegion = context.RDS_REGION || region;
+      
+      const rdsDbUser = context.RDS_DB_USER;
+      const rdsClusterID = context.RDS_CLUSTER_ID;
 
       // Existing RDS Cluster to get info from
       const existingRdsCluster = new ImportedRDSCluster(this, 'existingRDS', {
-        TargetRegion: region, 
+        TargetRegion: rdsRegion, 
         TargetAccount: rdsAccountID,
         DBClusterIdentifier: rdsClusterID
       });
@@ -57,6 +60,11 @@ export class OutputsStack extends cdk.Stack {
       new ssm.StringParameter(this, "rdsDBPortString", {
         parameterName: "/ssotordssync/rdsDBPort",
         stringValue: existingRdsCluster.port
+      });
+
+      new ssm.StringParameter(this, "rdsLambdaDBUser", {
+        parameterName: "/ssotordssync/rdsLambdaDBUser",
+        stringValue: rdsDbUser
       });
 
       new cdk.CfnOutput(this, 'iamIdcId', {

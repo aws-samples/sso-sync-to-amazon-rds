@@ -1,12 +1,14 @@
+import psycopg2
+from mysql import connector
+
+
 class SQLExecutor:
     def __init__(self, conn, engine):
         if engine == 'mysql':
-            from mysql import connector
             self.executor = MySQLExecutor(conn)
         if engine == 'postgres':
-            import psycopg2
-            self.executor == PGExecutor(conn)
-    
+            self.executor = PGExecutor(conn)
+
     def drop(self, user_name, friendly_name):
         self.executor.drop(user_name, friendly_name)
 
@@ -82,19 +84,20 @@ class PGExecutor:
     """
     def __init__(self, conn):
         self.conn = conn
+        self.conn.autocommit = True
 
     def create(self, user_name: str, friendly_name="") -> None:
-        query = f"CREATE USER '{user_name}';"
+        query = f'CREATE USER "{user_name}";'
         self.write(query, friendly_name)
-        query = f"GRANT rds_iam to '{user_name}';"
+        query = f'GRANT rds_iam to "{user_name}";'
         self.write(query, friendly_name)
 
     def grant(self, user_name: str, role: str, friendly_name="") -> None:
-        query = f"GRANT '{role}' TO '{user_name}';"
+        query = f'GRANT "{role}" TO "{user_name}";'
         self.write(query, friendly_name)
 
     def drop(self, user_name: str, friendly_name=""):
-        query = f"DROP USER IF EXISTS '{user_name}';"
+        query = f'DROP USER IF EXISTS "{user_name}";'
         self.write(query, friendly_name)
 
     def write(self, query: str, friendly_name="") -> None:
@@ -119,7 +122,7 @@ class PGExecutor:
         Returns number of rows
         """
 
-        query = f"SELECT username FROM pg_catalog.pg_user WHERE user = '{user_name}';"
+        query = f"SELECT usename FROM pg_catalog.pg_user WHERE usename = '{user_name}';"
 
         try:
             cursor = self.conn.cursor()

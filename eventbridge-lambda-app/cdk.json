@@ -45,7 +45,7 @@
     "dev": {
       "IAM_IDC_GROUP_NAMES": null,
       "VPC_ID": null,
-      "RDS_DB_USER": "sso_provisioner",
+      "RDS_DB_USER": null,
       "RDS_CLUSTER_ID": null,
       "RDS_ACCOUNT_ID": null,
       "IAM_IDC_STORE_ID": null,
