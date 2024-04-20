@@ -29,12 +29,12 @@ export class LambdaSNSFailureNotification extends cdk.Stack {
       const notifyFailure: lambda.Function = new lambda.Function(this, 'notifyFailureFunction', {
         memorySize: 128,
         timeout: Duration.seconds(10),
-        runtime: Runtime.PYTHON_3_10,
+        runtime: Runtime.PYTHON_3_12,
         handler: 'handler.handler',
         environment: {
           SNS_ARN: topic.topicArn,
         },
-        code: lambda.Code.fromAsset(path.join(__dirname, '../src/sns-notify-function'))
+        code: lambda.Code.fromAsset(path.join(__dirname, '../functions/sns-notify-function'))
       });
 
       //IAM Policy for Lambda function to SNS
