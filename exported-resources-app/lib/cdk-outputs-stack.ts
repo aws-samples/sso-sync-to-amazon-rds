@@ -2,7 +2,6 @@ import * as cdk from 'aws-cdk-lib';
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import { Construct } from 'constructs';
 import { ImportedRDSCluster } from './imported-rds-cluster';
-import { ImportedIamIdc, ImportedIamIdcGroup } from './imported-iam-idc';
 
 export class OutputsStack extends cdk.Stack {
     constructor(scope: Construct, id: string) {
@@ -12,46 +11,23 @@ export class OutputsStack extends cdk.Stack {
       const env = process.env.CDK_ENV || "dev";
       const context = this.node.tryGetContext(env);
 
+      // RDS account and region
       const accountID = cdk.Stack.of(this).account;
       const region = cdk.Stack.of(this).region;
-      const rdsAccountID = context.RDS_ACCOUNT_ID || accountID;
-      const rdsRegion = context.RDS_REGION || region;
+
       
       const rdsDbUser = context.RDS_DB_USER;
       const rdsClusterID = context.RDS_CLUSTER_ID;
 
       // Existing RDS Cluster to get info from
       const existingRdsCluster = new ImportedRDSCluster(this, 'existingRDS', {
-        TargetRegion: rdsRegion, 
-        TargetAccount: rdsAccountID,
+        TargetRegion: accountID, 
+        TargetAccount: region,
         DBClusterIdentifier: rdsClusterID
       });
 
-      // Specify comma separated list of groups or just a single group
-      const groupNames = context.IAM_IDC_GROUP_NAMES.split(",");
-
-      // Get IAM IdC Store ID
-      const identityStoreID = new ImportedIamIdc(this, 'importedIdc', { TargetRegion: region }).idcID;
-
-      // Empty object for group membership data
-      let groups: { [groupID: string] : string } = {};
-      let groupIDs: string[] = [];
-
-      // Get data for each configured group name
-      for (let groupName of groupNames) {
-            // Existing Group ID to check against when adding new user to RDS (ex.: DBA group)
-            const groupID = new ImportedIamIdcGroup(this, 'iamIdcGroupId' + groupName, {
-              TargetRegion: region, 
-              TargetIDC: identityStoreID,
-              GroupName: groupName
-            }).groupID;
-
-            // Populate group objects
-            groups[groupID] = groupName;
-            groupIDs.push(groupID);
-      }
-
       // SSM parameters to hold exported values
+      // Needed for values that are required at synth time
       new ssm.StringParameter(this, "vpcIdString", {
         parameterName: "/ssotordssync/rdsVpcId",
         stringValue: existingRdsCluster.vpc
@@ -67,21 +43,7 @@ export class OutputsStack extends cdk.Stack {
         stringValue: rdsDbUser
       });
 
-      new cdk.CfnOutput(this, 'iamIdcId', {
-        value: identityStoreID,
-        exportName: 'iamIdcId'
-      });
-
-      new cdk.CfnOutput(this, 'iamIdcGroupIDs', {
-        value: groupIDs.join(','),
-        exportName: 'iamIdcGroupIDs'
-      });
-
-      new cdk.CfnOutput(this, 'iamIdcGroups', {
-        value: JSON.stringify(groups),
-        exportName: 'iamIdcGroups'
-      });
-
+      // Cfn outputs to hold exported values
       new cdk.CfnOutput(this, 'rdsClusterEPAddr', {
         value: existingRdsCluster.endpoint,
         exportName: 'rdsClusterEPAddr'

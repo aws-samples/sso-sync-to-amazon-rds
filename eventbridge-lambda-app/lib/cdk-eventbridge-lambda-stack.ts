@@ -24,21 +24,18 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const env = process.env.CDK_ENV || "dev";
     const context = this.node.tryGetContext(env);
 
-    // Lambda and EventBridge region and account
+    // RDS, DDB and Lambda account and region
     const accountID = cdk.Stack.of(this).account;
     const region = cdk.Stack.of(this).region;
 
-    // RDS region and account. By default the same as above
-    const rdsAccountID = context.RDS_ACCOUNT_ID || accountID;
-    const rdsRegion = context.RDS_REGION || region;
+    // IDC account and region
+    const idcAccountID = context.IDC_ACCOUNT_ID;
+    const idcRegion = context.IDC_REGION;
 
     // Import values from stack
     const rdsClusterEPAddr = cdk.Fn.importValue('rdsClusterEPAddr');
     const dbSgID = cdk.Fn.importValue('dbSgID');
     const rdsEngine = cdk.Fn.importValue('rdsEngine');
-    const groups = cdk.Fn.importValue('iamIdcGroups');
-    const groupIDs = cdk.Fn.importValue('iamIdcGroupIDs');
-    const identityStoreID = cdk.Fn.importValue('iamIdcId');
 
     // Import values from parameter store
     const vpcID = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsVpcId");
@@ -50,8 +47,21 @@ export class NewSSOUserToRDS extends cdk.Stack {
       mutable: true
     });
 
-    // Existing default EventBridge bus
-    const defaultBus = EventBus.fromEventBusName(this, 'defaultBus', 'default');
+    // Custom bus for cross-account event routing
+    const ssoBus = new EventBus(this, "ssoBus", {
+      eventBusName: "SSO-RDS-Bus",
+    });
+
+    // IAM policy for the target bus
+    const grantPutToIDCBus = new iam.PolicyStatement({
+      actions: ['events:PutEvents'],
+      principals: [
+        new iam.ArnPrincipal(`arn:aws:events:${idcRegion}:${idcAccountID}:event-bus/sso-rds-sync`)
+      ]
+    });
+    
+    // Grant put to the EventBus from IDC account
+    ssoBus.addToResourcePolicy(grantPutToIDCBus);
     
     // Existing VPC
     const lambdaVPC = Vpc.fromLookup(this, 'lambdaVPC', {
@@ -106,7 +116,6 @@ export class NewSSOUserToRDS extends cdk.Stack {
         RDS_DB_PORT: String(rdsDBPort),
         RDS_DB_ENGINE: rdsEngine,
         DDB_TABLE: rdsUserTable.tableName,
-        IDENTITYSTORE_GROUP_IDS: groups,
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../functions/create-user-function'))
     });
@@ -132,7 +141,6 @@ export class NewSSOUserToRDS extends cdk.Stack {
           RDS_DB_PORT: String(rdsDBPort),
           RDS_DB_ENGINE: rdsEngine,
           DDB_TABLE: rdsUserTable.tableName,
-          IDENTITYSTORE_GROUP_IDS: groups,
         },
         code: lambda.Code.fromAsset(path.join(__dirname, '../functions/delete-user-function'))
       });
@@ -146,20 +154,6 @@ export class NewSSOUserToRDS extends cdk.Stack {
     rdsUserTable.grant(createRDSUserFunction, ...actions);
     rdsUserTable.grant(deleteRDSUserFunction, ...actions);
 
-    // Policy that allows read access to IAM Identity Center Store
-    const lambdaToIAMIdCAccessPolicy = new iam.PolicyStatement({
-      actions: [
-        'identitystore:DescribeUser', // To get username
-        'identitystore:IsMemberInGroups', // To check group membership
-      ],
-      resources: [
-        'arn:aws:identitystore:::user/*',
-        'arn:aws:identitystore:::membership/*',
-        `arn:aws:identitystore:::group/*`,
-        `arn:aws:identitystore::${accountID}:identitystore/${identityStoreID}`,
-      ] 
-    });
-
     /* Policy for Lambda to connect to the DB
        RDS must have preconfigured IAM Authentication and user
        RDS user must have at least CREATE USER permissions
@@ -169,16 +163,9 @@ export class NewSSOUserToRDS extends cdk.Stack {
         'rds-db:connect'
       ],
       resources: [
-        `arn:aws:rds-db:${rdsRegion}:${rdsAccountID}:dbuser:*/${rdsLambdaDBUser}`,
+        `arn:aws:rds-db:${region}:${accountID}:dbuser:*/${rdsLambdaDBUser}`,
       ]
     });
-
-    // Grant Lambda function read access to IAM Identity Center Store
-    createRDSUserFunction.role?.attachInlinePolicy(
-      new iam.Policy(this, 'lambda-to-iam-identitycenter-policy', {
-        statements: [lambdaToIAMIdCAccessPolicy]
-      })
-    );
 
     // RDS Connect policy
     const rdsConnectIamPolicy = new iam.Policy(this, 'lambda-to-rds-db-policy', {
@@ -197,12 +184,9 @@ export class NewSSOUserToRDS extends cdk.Stack {
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
           "eventName": ["AddMemberToGroup"],
-          "requestParameters": {
-            "groupId": groupIDs.split(',') // Only matches a specific set of groups
-          }
         }
       },
-      eventBus: defaultBus,
+      eventBus: ssoBus,
     });
 
     // Default bus rule to match delete IAM Identity Center user events
@@ -215,7 +199,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
           "eventName": ["DeleteUser"]
         }
       },
-      eventBus: defaultBus,
+      eventBus: ssoBus,
     });
 
     // Default bus rule to match remove IAM Identity Center user from group events
@@ -226,12 +210,9 @@ export class NewSSOUserToRDS extends cdk.Stack {
         detail: {
           "eventSource": ["sso-directory.amazonaws.com"],
           "eventName": ["RemoveMemberFromGroup"],
-          "requestParameters": {
-            "groupId": groupIDs.split(',') // Only matches a specific set of groups
-          }
         }
       },
-      eventBus: defaultBus,
+      eventBus: ssoBus,
     });
 
     // Add Lambda Functions as targets to the respective EventBridge Rules
@@ -249,7 +230,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     });
 
     // New VPC gateway endpoint for Lambda functions to reach DynamoDB
-    const vpeDDB = new GatewayVpcEndpoint(this, 'VpcEpDDB', {
+    new GatewayVpcEndpoint(this, 'VpcEpDDB', {
       vpc: lambdaVPC,
       service: GatewayVpcEndpointAwsService.DYNAMODB
     });

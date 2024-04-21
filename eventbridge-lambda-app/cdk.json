@@ -43,12 +43,11 @@
     "@aws-cdk/aws-rds:databaseProxyUniqueResourceName": true,
     "@aws-cdk/aws-codedeploy:removeAlarmsFromDeploymentGroup": true,
     "dev": {
-      "IAM_IDC_GROUP_NAMES": null,
-      "VPC_ID": null,
-      "RDS_DB_USER": null,
-      "RDS_CLUSTER_ID": null,
       "RDS_ACCOUNT_ID": null,
-      "IAM_IDC_STORE_ID": null,
+      "RDS_REGION": null,
+      "IDC_ACCOUNT_ID": null,
+      "IDC_REGION": null,
+      "IAM_IDC_GROUP_NAMES": "DBA",
       "NOTIFICATION_EMAIL": null
     }
   }
