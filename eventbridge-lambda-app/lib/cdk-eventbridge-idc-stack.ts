@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
@@ -20,8 +21,9 @@ export class EventBridgeSSOLambda extends cdk.Stack {
     const rdsAccountID = context.RDS_ACCOUNT_ID;
     const rdsRegion = context.RDS_REGION;
 
-    // Identity Center region
+    // Identity Center region and account
     const region = cdk.Stack.of(this).region;
+    const accountID = cdk.Stack.of(this).account;
 
     // Specify comma separated list of groups or just a single group
     const groupNames = context.IAM_IDC_GROUP_NAMES.split(",");
@@ -58,7 +60,7 @@ export class EventBridgeSSOLambda extends cdk.Stack {
 
     // Custom bus for cross-account event routing
     const ssoBus = new EventBus(this, "ssoBus", {
-      eventBusName: "SSO-RDS-Bus",
+      eventBusName: "SSO-RDS-Sync-Source",
     });
 
     // Default bus rule to match new IAM Identity Center users events
@@ -113,44 +115,86 @@ export class EventBridgeSSOLambda extends cdk.Stack {
       },
     );
 
-    /* Lambda function triggered by a IAM IdC user creation
-       Creates a new RDS user
-       If a new SSO user is in a specific group
-       Username in RDS equals to SSO username
-    */
-    const getUsernameFunction: lambda.Function = new lambda.Function(
+    // Lambda function triggered by a IAM IdC user creation
+    const forwardCreateFunction: lambda.Function = new lambda.Function(
       this,
-      "getUsernameFromIdc",
+      "forwardCreateEvent",
       {
         memorySize: 128,
         timeout: Duration.seconds(10),
         runtime: Runtime.PYTHON_3_12,
         handler: "handler.handler",
         code: lambda.Code.fromAsset(
-          path.join(__dirname, "../functions/get-username-from-idc"),
+          path.join(__dirname, "../functions/forward-create-event"),
         ),
         environment: {
           DEST_BUS_NAME: ssoBus.eventBusName,
+          IDENTITYSTORE_GROUP_IDS: JSON.stringify(groups)
         },
       },
     );
 
-    // Add Lambda Function as target to the default bus rules
-    const lambdaFuncTarget = new events_targets.LambdaFunction(
-      getUsernameFunction,
+    // Lambda function triggered by a IAM IdC user deletion
+    const forwardDeleteFunction: lambda.Function = new lambda.Function(
+      this,
+      "forwardDeleteEvent",
+      {
+        memorySize: 128,
+        timeout: Duration.seconds(10),
+        runtime: Runtime.PYTHON_3_12,
+        handler: "handler.handler",
+        code: lambda.Code.fromAsset(
+          path.join(__dirname, "../functions/forward-delete-event"),
+        ),
+        environment: {
+          DEST_BUS_NAME: ssoBus.eventBusName,
+          IDENTITYSTORE_GROUP_IDS: JSON.stringify(groups)
+        },
+      },
     );
-    createSSOUserRule.addTarget(lambdaFuncTarget);
-    deleteSSOUserRule.addTarget(lambdaFuncTarget);
-    removeSSOUserFromGroupoRule.addTarget(lambdaFuncTarget);
+
+    // Policy that allows read access to IAM Identity Center Store
+    const lambdaToIAMIdCAccessPolicy = new iam.PolicyStatement({
+      actions: [
+        "identitystore:DescribeUser", // To get username
+        "identitystore:IsMemberInGroups", // To check group membership
+      ],
+      resources: [
+        "arn:aws:identitystore:::user/*",
+        "arn:aws:identitystore:::membership/*",
+        `arn:aws:identitystore:::group/*`,
+        `arn:aws:identitystore::${accountID}:identitystore/${identityStoreID}`,
+      ],
+    });
+
+    // Grant Lambda function read access to IAM Identity Center Store
+    forwardCreateFunction.role?.attachInlinePolicy(
+      new iam.Policy(this, "lambda-to-iam-identitycenter-policy", {
+        statements: [lambdaToIAMIdCAccessPolicy],
+      }),
+    );
+
+    // Add Lambda Functions as targets to the default bus create rule
+    const forwardCreateFuncTarget = new events_targets.LambdaFunction(
+      forwardCreateFunction,
+    );
+    const forwardDeleteFuncTarget = new events_targets.LambdaFunction(
+      forwardDeleteFunction,
+    );
+
+    createSSOUserRule.addTarget(forwardCreateFuncTarget);
+    deleteSSOUserRule.addTarget(forwardDeleteFuncTarget);
+    removeSSOUserFromGroupoRule.addTarget(forwardDeleteFuncTarget);
 
     // Allow Lambda to put events
-    ssoBus.grantPutEventsTo(getUsernameFunction);
+    ssoBus.grantPutEventsTo(forwardCreateFunction);
+    ssoBus.grantPutEventsTo(forwardDeleteFunction);
 
     const forwardAllTarget = new events_targets.EventBus(
       EventBus.fromEventBusArn(
         this,
         "rdsAccountCustomBus",
-        `arn:aws:events:${rdsRegion}:${rdsAccountID}:event-bus/sso-rds-sync`,
+        `arn:aws:events:${rdsRegion}:${rdsAccountID}:event-bus/SSO-RDS-Sync-Target`,
       ),
     );
 

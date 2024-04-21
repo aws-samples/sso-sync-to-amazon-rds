@@ -56,7 +56,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const grantPutToIDCBus = new iam.PolicyStatement({
       actions: ['events:PutEvents'],
       principals: [
-        new iam.ArnPrincipal(`arn:aws:events:${idcRegion}:${idcAccountID}:event-bus/sso-rds-sync`)
+        new iam.AccountPrincipal(idcAccountID),
       ]
     });
     

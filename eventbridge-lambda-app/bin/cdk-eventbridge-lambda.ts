@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { NewSSOUserToRDS } from '../lib/cdk-eventbridge-lambda-stack';
+import { EventBridgeSSOLambda } from '../lib/cdk-eventbridge-idc-stack';
 import { LambdaSNSFailureNotification } from '../lib/cdk-lambda-sns-stack';
 
 const app = new cdk.App();
@@ -21,7 +22,10 @@ if (email != null) {
     });
 }
 
+/*
 new NewSSOUserToRDS(app, 'NewSsoUserToRdsStack', { 
     env: envDefault,
     onFailureDest: notificationDestination?.notifyFailureDest,
-});
+});*/
+
+new EventBridgeSSOLambda(app, 'EventBridgeSSOLambda');
