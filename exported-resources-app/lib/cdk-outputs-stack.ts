@@ -14,7 +14,6 @@ export class OutputsStack extends cdk.Stack {
       // RDS account and region
       const accountID = cdk.Stack.of(this).account;
       const region = cdk.Stack.of(this).region;
-
       
       const rdsDbUser = context.RDS_DB_USER;
       const rdsClusterID = context.RDS_CLUSTER_ID;

@@ -8,24 +8,35 @@ const app = new cdk.App();
 
 let notificationDestination = undefined;
 const env = process.env.CDK_ENV || "dev";
-const email = app.node.tryGetContext(env).NOTIFICATION_EMAIL;
+const context = app.node.tryGetContext(env);
+const email = context.NOTIFICATION_EMAIL;
+const rdsAccountID = context.RDS_ACCOUNT_ID;
+const rdsRegion = context.RDS_REGION;
+const idcAccountID = context.IDC_ACCOUNT_ID;
+const idcRegion = context.IDC_REGION;
 
-const envDefault = { 
-    region: process.env.CDK_DEFAULT_REGION, 
-    account: process.env.CDK_DEFAULT_ACCOUNT,
-}
+const envRDS = { 
+    region: rdsRegion, 
+    account: rdsAccountID,
+};
+
+const envIDC = {
+    region: idcRegion,
+    account: idcAccountID,
+};
 
 if (email != null) {
     notificationDestination = new LambdaSNSFailureNotification(app, 'LambdaSNSFailureNotificationStack', {
-        env: envDefault,
+        env: envRDS,
         email: email,
     });
 }
 
-/*
-new NewSSOUserToRDS(app, 'NewSsoUserToRdsStack', { 
-    env: envDefault,
-    onFailureDest: notificationDestination?.notifyFailureDest,
-});*/
+new EventBridgeSSOLambda(app, 'EventBridgeSSOLambda', {
+    env: envIDC
+});
 
-new EventBridgeSSOLambda(app, 'EventBridgeSSOLambda');
+new NewSSOUserToRDS(app, 'NewSsoUserToRdsStack', { 
+    env: envRDS,
+    onFailureDest: notificationDestination?.notifyFailureDest,
+});

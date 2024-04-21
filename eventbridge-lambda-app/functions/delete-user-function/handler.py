@@ -1,6 +1,4 @@
-import os
 import logging
-import json
 import connection_manager
 from sql_executor import SQLExecutor as SE
 
@@ -17,8 +15,10 @@ def handler(event, context):
     global DB_ENGINE
     global DDB_TABLE
 
+    details = event['detail']
+
     # One specific group will trigger RDS user creation
-    user_id = get_user_id(event['detail'])
+    user_id = details.get("user_id")
 
     # User does not exist or not in the specified group ID
     if user_id is None:
@@ -31,7 +31,13 @@ def handler(event, context):
 
     # Get username from DynamoDB
     user_name = get_user_name(user_id, DDB_TABLE)
-    event_name = event['detail']['eventName']
+    event_name = details.get("event_type")
+
+    # Event type is required
+    if event_name is None:
+        logger.error("Event type not found")
+        logger.error(details)
+        raise ValueError("Event type is required but not found")
 
     # When removing member from a group, it's expected to be recorded in DDB
     if event_name == 'RemoveMemberFromGroup' and user_name is None:
@@ -54,47 +60,6 @@ def handler(event, context):
     delete_user_mapping(user_id, DDB_TABLE)
 
     return {"status": "Success"}
-
-def get_user_id(event_details):
-    """
-    Parses the event details
-    Returns user_id if the group is unknown or the user belongs to the configured group
-    Returns None if user doesn't belong to the configured group (no need to delete)
-    """
-
-    event_type = event_details['eventName']
-    check_group = True
-    group_matches = True
-
-    group_ids = json.loads(os.environ.get('IDENTITYSTORE_GROUP_IDS'))
-
-    # Can't check group membership if group ID is not specified
-    if group_ids is None:
-        logger.warning("Group ID is not specified in env, skipping group checks")
-        check_group = False
-
-    # Removing user from a group
-    if event_type == 'RemoveMemberFromGroup' and check_group:
-        user_id = event_details['requestParameters']['memberId']
-        event_name = "remove user from group"
-
-        # Check group membership when group ID is configured
-        if check_group:
-            _group_id = event_details['requestParameters']['groupId']
-            group_matches = _group_id in group_ids.keys()
-    # Deleting user
-    else:
-        user_id = event_details['requestParameters']['userId']
-        event_name = "delete user"
-
-    logger.info("Received new %s event with user_id %s", event_name, user_id)
-
-    if not group_matches:
-        logger.info("Configured group doesn't match")
-        return None
-
-    logger.info("Succesfully parsed user ID")
-    return user_id
 
 def get_user_name(user_id, ddb_table):
     """

@@ -1,7 +1,4 @@
-import os
 import logging
-import json
-import boto3
 import connection_manager
 from sql_executor import SQLExecutor as SE
 
@@ -18,16 +15,18 @@ def handler(event, context):
     global DB_ENGINE
     global DDB_TABLE
 
-    # A specific set of groups will trigger RDS user creation
-    group_ids = json.loads(os.environ.get('IDENTITYSTORE_GROUP_IDS'))
-    event_group_id = event['detail']['requestParameters']['groupId']
-    user_name, user_id = get_user_info(event['detail'], group_ids)
-    role_name = group_ids[event_group_id]
+    details = event['detail']
+
+    # Required details
+    user_name = details.get("user_name")
+    user_id = details.get("user_id")
+    role_name = details.get("role_name")
 
     # User does not exist or not in the specified group ID
-    if user_name is None:
-        logger.info("Not adding user to RDS")
-        return {"status": "Success"}
+    if not all([user_name, user_id, role_name]):
+        logger.error("Event missing required parameter")
+        logger.error(details)
+        raise ValueError("Username, id or role name is missing in the event")
 
     # Init DynamoDB table if doesn't exist
     if DDB_TABLE is None:
@@ -95,45 +94,6 @@ def handler(event, context):
             raise Exception("Failed to create user in DynamoDB") from err
 
     return {"status": "Success"}
-
-def get_user_info(event_details, group_ids):
-    """
-    Gets user details from IAM Identity Center using user_id
-    Returns username and user ID if user exists and belongs to a certain group
-    Returns None and user ID otherwise
-    """
-
-    group_matches = False
-
-    # Always adding user to a group (even on user creation)
-    user_id = event_details['requestParameters']['member']['memberId']
-    _group_id = event_details['requestParameters']['groupId']
-    group_matches = _group_id in group_ids.keys()
-
-    logger.info("Received new add user to group event with user_id %s", user_id)
-
-    # The IAM Identity Center group is not configured for this function
-    # Normally shouldn't happen
-    if not group_matches:
-        logger.warning("User is not part of a requested group id %s", _group_id)
-        return None, user_id
-
-    identitystore_id = event_details['requestParameters']['identityStoreId']
-    client = boto3.client('identitystore')
-
-    logger.info("Fetching user ID from Identity Store")
-    user_data = client.describe_user(
-        IdentityStoreId=identitystore_id,
-        UserId=user_id
-    )
-
-    if not user_data:
-        logger.error("Failed to get user data for user id %s", user_id)
-        return None, user_id
-
-    user_name = user_data.get('UserName', None)
-
-    return user_name, user_id
 
 def rollback(user_name, executor):
     """

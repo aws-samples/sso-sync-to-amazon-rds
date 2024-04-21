@@ -28,9 +28,8 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const accountID = cdk.Stack.of(this).account;
     const region = cdk.Stack.of(this).region;
 
-    // IDC account and region
+    // IDC account to allow creating events in RDS account
     const idcAccountID = context.IDC_ACCOUNT_ID;
-    const idcRegion = context.IDC_REGION;
 
     // Import values from stack
     const rdsClusterEPAddr = cdk.Fn.importValue('rdsClusterEPAddr');
@@ -54,6 +53,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // IAM policy for the target bus
     const grantPutToIDCBus = new iam.PolicyStatement({
+      sid: "AllowFromIDCAccount",
       actions: ['events:PutEvents'],
       principals: [
         new iam.AccountPrincipal(idcAccountID),
@@ -180,11 +180,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const createSSOUserRule = new Rule(this, 'AddUserToGroupRule', {
       description: 'Add RDS user when an IAM Identity Center user is added to a group',
       eventPattern: {
-        source: ["aws.sso-directory"],
-        detail: {
-          "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["AddMemberToGroup"],
-        }
+        source: ["Lambda function: forward-create-event"],
       },
       eventBus: ssoBus,
     });
@@ -193,24 +189,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const deleteSSOUserRule = new Rule(this, 'DeleteSSOUserRule', {
       description: 'Deletes RDS user when user is deleted from IAM Identity Center',
       eventPattern: {
-        source: ["aws.sso-directory"],
-        detail: {
-          "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["DeleteUser"]
-        }
-      },
-      eventBus: ssoBus,
-    });
-
-    // Default bus rule to match remove IAM Identity Center user from group events
-    const removeSSOUserFromGroupoRule = new Rule(this, 'RemoveUserFromGroupRule', {
-      description: 'Deletes RDS user when user is deleted from an IAM Identity Center group',
-      eventPattern: {
-        source: ["aws.sso-directory"],
-        detail: {
-          "eventSource": ["sso-directory.amazonaws.com"],
-          "eventName": ["RemoveMemberFromGroup"],
-        }
+        source: ["Lambda function: forward-delete-event"],
       },
       eventBus: ssoBus,
     });
@@ -219,7 +198,6 @@ export class NewSSOUserToRDS extends cdk.Stack {
     const deleteFunctionTarget = new events_targets.LambdaFunction(deleteRDSUserFunction);
     createSSOUserRule.addTarget(new events_targets.LambdaFunction(createRDSUserFunction));
     deleteSSOUserRule.addTarget(deleteFunctionTarget);
-    removeSSOUserFromGroupoRule.addTarget(deleteFunctionTarget);
 
     // New VPC interface endpoint for Lambda functions to reach IAM Identity Center Store
     const vpeIDC = new InterfaceVpcEndpoint(this, 'VpcEpIDC', {

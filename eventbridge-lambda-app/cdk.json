@@ -45,8 +45,8 @@
     "dev": {
       "RDS_ACCOUNT_ID": "817150522108",
       "RDS_REGION": "us-east-1",
-      "IDC_ACCOUNT_ID": null,
-      "IDC_REGION": null,
+      "IDC_ACCOUNT_ID": "620388536203",
+      "IDC_REGION": "us-east-1",
       "IAM_IDC_GROUP_NAMES": "DBA",
       "NOTIFICATION_EMAIL": null
     }

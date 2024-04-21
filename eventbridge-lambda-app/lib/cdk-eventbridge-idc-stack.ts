@@ -10,8 +10,8 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { ImportedIamIdc, ImportedIamIdcGroup } from "./imported-iam-idc";
 
 export class EventBridgeSSOLambda extends cdk.Stack {
-  constructor(scope: Construct, id: string) {
-    super(scope, id);
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
 
     // Get environment to work with, variables are specified in cdk.json
     const env = process.env.CDK_ENV || "dev";
