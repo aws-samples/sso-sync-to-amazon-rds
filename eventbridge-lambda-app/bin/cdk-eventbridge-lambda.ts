@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { NewSSOUserToRDS } from '../lib/cdk-eventbridge-lambda-stack';
 import { EventBridgeSSOLambda } from '../lib/cdk-eventbridge-idc-stack';
 import { LambdaSNSFailureNotification } from '../lib/cdk-lambda-sns-stack';
+import { OutputsStack } from '../lib/cdk-outputs-stack';
 
 const app = new cdk.App();
 
@@ -31,6 +32,10 @@ if (email != null) {
         email: email,
     });
 }
+
+new OutputsStack(app, 'Outputs', {
+    env: envRDS
+});
 
 new EventBridgeSSOLambda(app, 'EventBridgeSSOLambda', {
     env: envIDC

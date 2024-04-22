@@ -44,9 +44,11 @@
     "@aws-cdk/aws-codedeploy:removeAlarmsFromDeploymentGroup": true,
     "dev": {
       "RDS_ACCOUNT_ID": "817150522108",
-      "RDS_REGION": "us-east-1",
+      "RDS_REGION": "us-west-1",
       "IDC_ACCOUNT_ID": "620388536203",
       "IDC_REGION": "us-east-1",
+      "RDS_CLUSTER_ID": "database-1",
+      "RDS_DB_USER": "sso_provisioner",
       "IAM_IDC_GROUP_NAMES": "DBA",
       "NOTIFICATION_EMAIL": null
     }

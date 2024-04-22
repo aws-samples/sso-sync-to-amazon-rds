@@ -48,7 +48,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Custom bus for cross-account event routing
     const ssoBus = new EventBus(this, "ssoBus", {
-      eventBusName: "SSO-RDS-Bus",
+      eventBusName: "SSO-RDS-Sync-Target",
     });
 
     // IAM policy for the target bus
@@ -57,7 +57,8 @@ export class NewSSOUserToRDS extends cdk.Stack {
       actions: ['events:PutEvents'],
       principals: [
         new iam.AccountPrincipal(idcAccountID),
-      ]
+      ],
+      resources: [ssoBus.eventBusArn]
     });
     
     // Grant put to the EventBus from IDC account

@@ -86,7 +86,7 @@ def publish_event(modified_event, bus_name):
     event_client.put_events(
             Entries=[
                 {
-                    'Source': modified_event['event_type'],
+                    'Source': 'Lambda function: forward-delete-event',
                     'DetailType': 'New SSO to RDS delete event recieved',
                     'Detail': json.dumps(modified_event),
                     'EventBusName': bus_name

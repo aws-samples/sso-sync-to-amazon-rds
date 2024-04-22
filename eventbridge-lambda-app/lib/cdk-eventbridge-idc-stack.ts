@@ -190,6 +190,7 @@ export class EventBridgeSSOLambda extends cdk.Stack {
     ssoBus.grantPutEventsTo(forwardCreateFunction);
     ssoBus.grantPutEventsTo(forwardDeleteFunction);
 
+    // TODO: ADD DLQ
     const forwardAllTarget = new events_targets.EventBus(
       EventBus.fromEventBusArn(
         this,
