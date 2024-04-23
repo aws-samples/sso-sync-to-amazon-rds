@@ -38,7 +38,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
 
     // Import values from parameter store
     const vpcID = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsVpcId");
-    const rdsDBPort = +ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsDBPort");
+    const rdsDBPort = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsDBPort");
     const rdsLambdaDBUser = ssm.StringParameter.valueFromLookup(this, "/ssotordssync/rdsLambdaDBUser");
 
     // Existing RDS Security Group (first available is selected)
@@ -77,7 +77,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
     });
 
     // Allow DB port from Lambda
-    dbSG.connections.allowFrom(lambdaSG, Port.tcp(rdsDBPort), 'Allow DB from Lambda');
+    dbSG.connections.allowFrom(lambdaSG, Port.tcp(+rdsDBPort), 'Allow DB from Lambda');
 
     /* DynamoDB table to store user ID to user name mappings
        This table is needed because the IAM Identity Center events don't contain user details
@@ -114,7 +114,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
       environment: {
         RDS_DB_USER: rdsLambdaDBUser,
         RDS_DB_EP: rdsClusterEPAddr,
-        RDS_DB_PORT: String(rdsDBPort),
+        RDS_DB_PORT: rdsDBPort,
         RDS_DB_ENGINE: rdsEngine,
         DDB_TABLE: rdsUserTable.tableName,
       },
@@ -139,7 +139,7 @@ export class NewSSOUserToRDS extends cdk.Stack {
         environment: {
           RDS_DB_USER: rdsLambdaDBUser,
           RDS_DB_EP: rdsClusterEPAddr,
-          RDS_DB_PORT: String(rdsDBPort),
+          RDS_DB_PORT: rdsDBPort,
           RDS_DB_ENGINE: rdsEngine,
           DDB_TABLE: rdsUserTable.tableName,
         },

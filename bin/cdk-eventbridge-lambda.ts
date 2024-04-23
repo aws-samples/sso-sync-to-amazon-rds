@@ -33,7 +33,7 @@ if (email != null) {
     });
 }
 
-new OutputsStack(app, 'Outputs', {
+const outputsStack = new OutputsStack(app, 'Outputs', {
     env: envRDS
 });
 
@@ -41,7 +41,9 @@ new EventBridgeSSOLambda(app, 'EventBridgeSSOLambda', {
     env: envIDC
 });
 
-new NewSSOUserToRDS(app, 'NewSsoUserToRdsStack', { 
+const rdsStack = new NewSSOUserToRDS(app, 'EventBridgeLambdaRDS', { 
     env: envRDS,
     onFailureDest: notificationDestination?.notifyFailureDest,
 });
+
+rdsStack.addDependency(outputsStack);
