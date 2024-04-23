@@ -3,6 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { Duration } from "aws-cdk-lib";
 import { EventBus, Rule } from "aws-cdk-lib/aws-events";
@@ -190,13 +191,20 @@ export class EventBridgeSSOLambda extends cdk.Stack {
     ssoBus.grantPutEventsTo(forwardCreateFunction);
     ssoBus.grantPutEventsTo(forwardDeleteFunction);
 
-    // TODO: ADD DLQ
+    // DLQ for forward all rule
+    const forwardAllDLQ = new Queue(this, 'forwardAllDLQ', {
+      queueName: 'SSO-RDS-Sync-DLQ'
+    });
+
+    // Forward all events to RDS account
     const forwardAllTarget = new events_targets.EventBus(
       EventBus.fromEventBusArn(
         this,
         "rdsAccountCustomBus",
         `arn:aws:events:${rdsRegion}:${rdsAccountID}:event-bus/SSO-RDS-Sync-Target`,
-      ),
+      ), {
+        deadLetterQueue: forwardAllDLQ
+      }
     );
 
     new Rule(this, "ForwardAll", {
