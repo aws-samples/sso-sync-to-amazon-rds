@@ -205,7 +205,10 @@ export class NewSSOUserToRDS extends cdk.Stack {
       vpc: lambdaVPC,
       service: new InterfaceVpcEndpointService(`com.amazonaws.${region}.identitystore`),
       privateDnsEnabled: true,
-      open: false
+      open: false,
+      subnets: {
+        availabilityZones: lambdaVPC.availabilityZones.slice(0,2),
+      }
     });
 
     // New VPC gateway endpoint for Lambda functions to reach DynamoDB
