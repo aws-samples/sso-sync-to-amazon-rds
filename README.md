@@ -16,7 +16,18 @@ The solution includes AWS Cloud Development Kit (CDK) stacks and code for AWS La
 2. `EventBridgeLambdaRDS` - deployed to the AWS account with the target RDS database. It includes custom EventBridge bus that listens to the events emitted by the `EventBridgeSSOLambda` stack, and triggers corresponding Lambda functions. The functions create or delete users in the target RDS database, and track record of the created users in the Amazon DynamoDB table
 3. `Outputs` - deployed to the AWS account with the target RDS database. This solution doesn't create or modify RDS databases. This stack is responsible for retrieving necessary details about the existing resources like database endpoint, engine, port, VPC details and more. It helps users specify minimal necessary information instead of retrieving it manually. `EventBridgeLambdaRDS` depends on the `Outputs` stack.
 
-![Architecture diagram](architecture_diagram_v2.png)
+![Architecture diagram](architecture_diagram_v3.png)
+
+1. SSO administrator creates a new user in AWS IAM Identity Center 
+2. AWS IAM Identity Center emits an event to Amazon EventBridge default event bus
+3. Amazon EventBridge triggers the AWS Lambda function if user belongs to the configured DBA group
+4. The Lambda function retrieves username from the AWS IAM Identity Center
+5. The Lambda function emits a new event containing username to a custom EventBridge event bus
+6. The custom bus forwards all event to the target AWS account's event bus
+7. The custom event bus in the target account triggers the Lambda function
+8. The Lambda function in the target account creates user in the Amazon RDS database
+9. The Lambda function in the target account stores user mapping in the Amazon DynamoDB table
+10. The user can now login to the database using their temporary AWS credentials
 
 EventBridge rules trigger events for a specific group configured in the `IAM_IDC_GROUP_NAMES` variable, e.g. DBA group. You can specify multiple comma-separated group names, for example `"IAM_IDC_GROUP_NAMES": "DBA,Analytics"`. 
 
