@@ -59,10 +59,17 @@ The solution doesn't delete or create users if a user with the same username alr
 
 ## Requirements
 
+### On your AWS account side
+
 1. Amazon RDS cluster must be configured with the IAM Authentication: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html
 2. Amazon RDS cluster must have a username for the Lambda function. This user should have permissions to create users and grant permissions
 3. IAM Identity Center must be configured with a permission set that allows new users to connect to the RDS cluster using their username. Lambda Function will create user regardless of this permission, however the user will fail to authenticate unless it's present. You can find an example policy in `policies/iam-idc-allow-rds-connect.json`
 4. When using the example policy, IAM Identity Center must be configured with the following attributes for access control: `key: name`, `value: ${path:username}`. More on that here: https://docs.aws.amazon.com/singlesignon/latest/userguide/configure-abac.html
+
+### On the workstation side
+
+1. Make sure you have CDK installed and configured. More on that here: https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install
+2. Make sure docker is up and running. Docker is needed to provision Lambda functions. You can install docker following the official guide here: https://docs.docker.com/engine/install/
 
 ## Configuration variables
 
@@ -109,13 +116,25 @@ You can limit the permissions of the user according to the principle of the leas
 
 ## Deploying and destroying stacks
 
-To deploy stacks run:
+The first step is to deploy the solution in the AWS account where you run the RDS cluster. To deploy it run:
 
-`cdk deploy --all`
+`cdk deploy EventBridgeLambdaRDS`
 
-To destroy stacks run:
+In addition to `EventBridgeLambdaRDS` it deploys the `Outputs` stack to the same AWS account. This stack is needed to avoid populating necessary variables manually
 
-`cdk destroy --all`
+The second step is to deploy the solution in the AWS account where you configured IAM Identity Center. This step can be performed independently from a separate workstation. To deploy it run:
+
+`cdk deploy EventBridgeSSOLambda`
+
+When deploying stacks to different accounts, it might be convinient to make use of profiles that are associated with respective credentials. For example, you can configure access to the AWS account where the IAM Identity Center is configured in a profile named `idc-Admin`, and then run the stack specifying this profile:
+
+`cdk deploy EventBridgeSSOLambda --profile idc-Admin`
+
+To rollback the changes, run `cdk destroy` for all the stacks you've deployed. For example:
+
+`cdk destroy EventBridgeLambdaRDS`
+
+`cdk destroy EventBridgeSSOLambda`
 
 ## Example logging in (MySQL)
 
