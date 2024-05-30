@@ -68,8 +68,11 @@ The solution doesn't delete or create users if a user with the same username alr
 
 ### On the workstation side
 
+A simple way to satisfy most of the requirements for the workstation is to run the deployment process in AWS Cloud9. You can find out more about it here: https://docs.aws.amazon.com/cloud9/latest/user-guide/welcome.html
+
 1. Make sure you have CDK installed and configured. More on that here: https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install
 2. Make sure docker is up and running. Docker is needed to provision Lambda functions. You can install docker following the official guide here: https://docs.docker.com/engine/install/
+3. Install CDK dependencies by running `npm install`
 
 ## Configuration variables
 
