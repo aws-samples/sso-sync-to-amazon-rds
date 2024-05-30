@@ -69,7 +69,7 @@ The solution doesn't delete or create users if a user with the same username alr
 ### On the workstation side
 
 1. Make sure you have CDK installed and configured. More on that here: https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install
-2. Make sure docker (or a different container runtime) is up and running. Docker is needed to provision Lambda functions. You can install docker following the official guide here: https://docs.docker.com/engine/install/
+2. Make sure docker is up and running. Docker is needed to provision Lambda functions. You can install docker following the official guide here: https://docs.docker.com/engine/install/
 
 ## Configuration variables
 
