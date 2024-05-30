@@ -12,6 +12,9 @@ interface ImportedRDSClusterProps {
 export class ImportedRDSCluster extends Construct {
     public readonly endpoint: string;
     public readonly vpcSgId: string;
+    public readonly port: string;
+    public readonly engine: string;
+    public readonly vpc: string;
     
     constructor(scope: Construct, id: string, props: ImportedRDSClusterProps) {
         super(scope, id);
@@ -25,6 +28,14 @@ export class ImportedRDSCluster extends Construct {
           resourceName: '*',
           arnFormat: ArnFormat.COLON_RESOURCE_NAME
         });
+        const dbInstanceArn = stack.formatArn({
+            account: props.TargetAccount,
+            region: props.TargetRegion,
+            service: 'rds',
+            resource: 'db',
+            resourceName: '*',
+            arnFormat: ArnFormat.COLON_RESOURCE_NAME
+          });
 
         const cluster = new cr.AwsCustomResource(this, 'importedRDS', {
             onUpdate: {
@@ -41,7 +52,27 @@ export class ImportedRDSCluster extends Construct {
             })
         });
 
+        const instance = new cr.AwsCustomResource(this, 'importedRDSi', {
+            onUpdate: {
+                service: 'RDS',
+                action: 'describeDBInstances',
+                parameters: {
+                    DBClusterIdentifier: cluster.getResponseField('DBClusters.0.DBClusterMembers.0.DBInstanceIdentifier'),
+                },
+                outputPaths: ['DBInstances.0.DBSubnetGroup.VpcId'],
+                region: props.TargetRegion,
+                physicalResourceId: cr.PhysicalResourceId.fromResponse('DBInstances.0.DBInstanceIdentifier'),
+            },
+            policy: cr.AwsCustomResourcePolicy.fromSdkCalls({
+                resources: [dbInstanceArn]
+            }),
+
+        });
+
+        this.vpc = instance.getResponseField('DBInstances.0.DBSubnetGroup.VpcId');
         this.endpoint = cluster.getResponseField('DBClusters.0.Endpoint');
         this.vpcSgId = cluster.getResponseField('DBClusters.0.VpcSecurityGroups.0.VpcSecurityGroupId');
+        this.port = cluster.getResponseField('DBClusters.0.Port');
+        this.engine = cluster.getResponseField('DBClusters.0.Engine');
     }
 }
