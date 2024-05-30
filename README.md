@@ -120,7 +120,11 @@ The first step is to deploy the solution in the AWS account where you run the RD
 
 `cdk deploy EventBridgeLambdaRDS`
 
-In addition to `EventBridgeLambdaRDS` it deploys the `Outputs` stack to the same AWS account. This stack is needed to avoid populating necessary variables manually
+In addition to `EventBridgeLambdaRDS` it deploys the `Outputs` stack to the same AWS account. This stack is needed to avoid populating necessary variables manually.
+
+If you get an error saying `SSM parameter not available`, deploy the `Outputs` stack manually:
+
+`cdk deploy Outputs`
 
 The second step is to deploy the solution in the AWS account where you configured IAM Identity Center. This step can be performed independently from a separate workstation. To deploy it run:
 
