@@ -72,7 +72,7 @@ A simple way to satisfy most of the requirements for the workstation is to run t
 
 1. Make sure you have CDK installed and configured. More on that here: https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install
 2. Make sure docker is up and running. Docker is needed to provision Lambda functions. You can install docker following the official guide here: https://docs.docker.com/engine/install/
-3. Install CDK dependencies by running `npm install`
+3. Install CDK dependencies
 
 ## Configuration variables
 
@@ -143,7 +143,55 @@ To rollback the changes, run `cdk destroy` for all the stacks you've deployed. F
 
 `cdk destroy EventBridgeSSOLambda`
 
-## Example logging in (MySQL)
+### Example end-to-end configuration and deployment
+
+Here's an example of how you can setup client machine and deploy the solution:
+
+1. Clone the repo
+
+`git clone https://github.com/aws-samples/sso-sync-to-amazon-rds.git`
+
+2. Follow instructions to install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+
+Example for Debian/Ubuntu:
+
+`apt install npm`
+
+3. Follow instructions to install AWS CDK CLI: https://docs.aws.amazon.com/cdk/v2/guide/getting_started.html#getting_started_install
+
+Example:
+
+`npm install -g aws-cdk`
+
+4. Install CDK dependencies. Run the following command in the project directory:
+
+`npm install`
+
+5. Follow instructions to install Docker: https://docs.docker.com/engine/install/
+
+Example for Debian/Ubuntu:
+
+`apt install docker.io`
+
+6. Edit `cdk.json` in the project directory to include necessary variables
+
+7. Bootstrap CDK environment (1-time procedure) and deploy stacks using the RDS account AWS credentials:
+
+`cdk bootstrap`
+
+`cdk deploy Outputs`
+
+`cdk deploy EventBridgeLambdaRDS`
+
+8. Bootstrap CDK environment (1-time procedure) and deploy stacks using the IAM Identity Center account AWS credentials:
+
+`cdk bootstrap`
+
+`cdk deploy EventBridgeSSOLambda`
+
+## Example logging in
+
+### MySQL
 
 When a new DBA user is created in a SSO identity provider, it will be able to authenticate in the RDS cluster given the pre-requisites are satisfied. They can use `aws` cli in combination with standard `mysql` client in order to login. 
 
@@ -172,7 +220,7 @@ When a new DBA user is created in a SSO identity provider, it will be able to au
     ```
     Replace `rds_endpoint` and `username` with the respective values.
 
-## Example logging in (PostgreSQL)
+### PostgreSQL
 
 When a new DBA user is created in a SSO identity provider, it will be able to authenticate in the RDS cluster given the pre-requisites are satisfied. They can use `aws` cli in combination with standard `psql` client in order to login. 
 
